@@ -1,7 +1,7 @@
 import { search } from './search.js';
 
-const BUILDER_MODEL  = 'deepseek/deepseek-v4-pro';
-const VERIFIER_MODEL = 'deepseek/deepseek-v4-flash';
+const BUILDER_MODEL  = 'openai/gpt-oss-120b:free';
+const VERIFIER_MODEL = 'openai/gpt-oss-120b:free';
 
 // ─────────────────────────────────────────────
 // BUILDER SYSTEM PROMPT
