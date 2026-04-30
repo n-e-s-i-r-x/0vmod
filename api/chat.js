@@ -129,6 +129,23 @@ When not building a mod:
 - Still prioritize accuracy — cite versions if discussing APIs
 - If asked about code, prefer research-backed answers`;
 
+// ── Stream reader → Node response writer ──────────────────
+async function pipeStream(readableStream, res) {
+  const reader = readableStream.getReader();
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = typeof value === 'string' ? value : decoder.decode(value, { stream: true });
+      res.write(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// ── Main handler ──────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -146,59 +163,54 @@ export default async function handler(req, res) {
 
     const selectedModel = pickModel(isModMode, forcedModel);
 
-    // Build system prompt with research context
     let systemContent = SYSTEM_PROMPT;
     if (researchContext && researchContext.trim()) {
       systemContent += `\n\n═══════════════════════════════════════════════════════════\n RESEARCH CONTEXT (PRIMARY SOURCE OF TRUTH)\n═══════════════════════════════════════════════════════════\n\n${researchContext}\n\n═══════════════════════════════════════════════════════════\n END RESEARCH CONTEXT\n═══════════════════════════════════════════════════════════`;
     }
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const apiMessages = [{ role: 'system', content: systemContent }, ...messages];
+    const buildParams = {
+      model: selectedModel,
+      messages: apiMessages,
+      temperature: isModMode ? 0.15 : 0.7,
+      max_tokens: isModMode ? 4096 : 1024,
+      stream: true
+    };
+
+    const fetchOpts = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.VERCEL_URL || 'https://mc-mod-builder.vercel.app',
+        'HTTP-Referer': process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://0vmod.vercel.app',
         'X-Title': 'MC Bedrock Mod Builder'
       },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages: [{ role: 'system', content: systemContent }, ...messages],
-        temperature: isModMode ? 0.15 : 0.7,
-        max_tokens: isModMode ? 4096 : 1024,
-        stream: true
-      })
-    });
+      body: JSON.stringify(buildParams)
+    };
 
+    let response = await fetch('https://openrouter.ai/api/v1/chat/completions', fetchOpts);
+
+    // Fallback to other model on failure
     if (!response.ok) {
       const errText = await response.text();
       console.error('Primary model error:', errText);
 
-      // Fallback
       const fallback = selectedModel === MODELS.modBuilder ? MODELS.chat : MODELS.modBuilder;
-      const fbResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': process.env.VERCEL_URL || 'https://mc-mod-builder.vercel.app',
-          'X-Title': 'MC Bedrock Mod Builder'
-        },
-        body: JSON.stringify({
-          model: fallback,
-          messages: [{ role: 'system', content: systemContent }, ...messages],
-          temperature: isModMode ? 0.15 : 0.7,
-          max_tokens: isModMode ? 4096 : 1024,
-          stream: true
-        })
-      });
+      buildParams.model = fallback;
 
-      if (!fbResp.ok) return res.status(response.status).json({ error: 'AI service unavailable' });
+      response = await fetch('https://openrouter.ai/api/v1/chat/completions', fetchOpts);
+
+      if (!response.ok) {
+        return res.status(response.status).json({ error: 'AI service unavailable' });
+      }
 
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Model-Used', fallback);
-      fbResp.body.pipe(res);
+
+      await pipeStream(response.body, res);
+      res.end();
       return;
     }
 
@@ -206,10 +218,16 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Model-Used', selectedModel);
-    response.body.pipe(res);
+
+    await pipeStream(response.body, res);
+    res.end();
 
   } catch (error) {
     console.error('Handler error:', error);
-    if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    } else {
+      try { res.end(); } catch(_) {}
+    }
   }
 }
