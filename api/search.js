@@ -35,25 +35,28 @@ async function tryTavily(query, apiKey) {
         search_depth: 'advanced',
         include_answer: true,
         include_raw_content: false,
-        max_results: 6,
+        max_results: 8,
       }),
     });
     if (!r.ok) return null;
     const data = await r.json();
     return {
-      results: (data.results || []).map(x => ({ title: x.title||'', url: x.url||'', snippet: x.content||'', score: x.score||0 })),
+      results: (data.results || []).map(x => ({
+        title: x.title || '', url: x.url || '', snippet: x.content || '', score: x.score || 0
+      })),
       answer: data.answer || null,
       source: 'tavily',
     };
-  } catch(e) { console.error('Tavily:', e); return null; }
+  } catch (e) { console.error('Tavily:', e); return null; }
 }
 
 async function tryWikipediaDeep(query) {
   try {
     const sUrl = 'https://en.wikipedia.org/w/api.php?' + new URLSearchParams({
-      action:'query', list:'search', srsearch:query, format:'json', srlimit:'5', srprop:'snippet|titlesnippet', origin:'*'
+      action: 'query', list: 'search', srsearch: query, format: 'json', srlimit: '5',
+      srprop: 'snippet|titlesnippet', origin: '*'
     });
-    const sRes = await fetch(sUrl, { headers: { 'User-Agent': 'MCModBuilder/2.0' } });
+    const sRes = await fetch(sUrl, { headers: { 'User-Agent': 'MCModBuilder/3.0' } });
     const sData = await sRes.json();
     const hits = sData?.query?.search || [];
     if (!hits.length) return null;
@@ -61,44 +64,52 @@ async function tryWikipediaDeep(query) {
     for (const hit of hits.slice(0, 4)) {
       try {
         const eUrl = 'https://en.wikipedia.org/w/api.php?' + new URLSearchParams({
-          action:'query', prop:'extracts|info', exintro:'true', explaintext:'true',
-          exsectionformat:'plain', titles:hit.title, format:'json', inprop:'url', origin:'*'
+          action: 'query', prop: 'extracts|info', exintro: 'true', explaintext: 'true',
+          exsectionformat: 'plain', titles: hit.title, format: 'json', inprop: 'url', origin: '*'
         });
-        const eRes = await fetch(eUrl, { headers: { 'User-Agent': 'MCModBuilder/2.0' } });
+        const eRes = await fetch(eUrl, { headers: { 'User-Agent': 'MCModBuilder/3.0' } });
         const eData = await eRes.json();
         const page = Object.values(eData?.query?.pages || {})[0];
         if (page?.extract?.length > 50) {
           results.push({
             title: page.title,
-            url: page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g,'_'))}`,
-            snippet: page.extract.replace(/\n{2,}/g,'\n').trim().slice(0, 600),
+            url: page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g, '_'))}`,
+            snippet: page.extract.replace(/\n{2,}/g, '\n').trim().slice(0, 600),
           });
         }
-      } catch(e) {}
+      } catch (e) { /* skip */ }
     }
     return results.length ? { results, answer: null, source: 'wikipedia' } : null;
-  } catch(e) { console.error('Wiki:', e); return null; }
+  } catch (e) { console.error('Wiki:', e); return null; }
 }
 
 async function tryDDG(query) {
   try {
     const url = 'https://api.duckduckgo.com/?' + new URLSearchParams({
-      q:query, format:'json', no_redirect:'1', no_html:'1', skip_disambig:'1'
+      q: query, format: 'json', no_redirect: '1', no_html: '1', skip_disambig: '1'
     });
-    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 MCModBuilder/2.0' } });
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 MCModBuilder/3.0' } });
     const data = await r.json();
     const results = [];
     let answer = null;
     if (data.Answer) answer = data.Answer;
     if (data.AbstractText?.length > 30) {
-      results.push({ title: data.Heading||query, url: data.AbstractURL||'', snippet: data.AbstractText.slice(0,500) });
+      results.push({
+        title: data.Heading || query,
+        url: data.AbstractURL || '',
+        snippet: data.AbstractText.slice(0, 500),
+      });
     }
-    for (const t of (data.RelatedTopics||[])) {
+    for (const t of (data.RelatedTopics || [])) {
       if (results.length >= 4) break;
       if (t.Text?.length > 20 && t.FirstURL) {
-        results.push({ title: t.Text.split(' - ')[0].slice(0,80), url: t.FirstURL, snippet: t.Text.slice(0,300) });
+        results.push({
+          title: t.Text.split(' - ')[0].slice(0, 80),
+          url: t.FirstURL,
+          snippet: t.Text.slice(0, 300),
+        });
       }
     }
     return (results.length || answer) ? { results, answer, source: 'ddg' } : null;
-  } catch(e) { console.error('DDG:', e); return null; }
+  } catch (e) { console.error('DDG:', e); return null; }
 }
