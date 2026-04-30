@@ -427,6 +427,9 @@ function setStatus(t, pulse) { pt.textContent = t; pd.classList.toggle('on', pul
    INTENT DETECTION
 ══════════════════════════════════════════════════════════ */
 async function detectIntent(text) {
+  const t = text.toLowerCase();
+  const buildWords = ['pack','addon','mod','entity','item','block','script','behavior','dash','sword','spawn','craft','recipe','loot','summon','ability','effect','enchant','custom','create','make','build','add'];
+  if (buildWords.some(w => t.includes(w))) return 'build';
   try {
     const r = await fetch('/api/intent', {
       method: 'POST',
@@ -471,7 +474,7 @@ async function send() {
   const isClarify = intent === 'clarify';
 
   // Terminal mode: build request, clarify, or followup to existing build
-  const useTerminal = S.cfg.termUI;
+  const useTerminal = (isBuild || isClarify || S.building) && S.cfg.termUI;
   if ((isBuild || isClarify) && !S.building) setMode(true);
 
   setStatus('thinking...', true);
