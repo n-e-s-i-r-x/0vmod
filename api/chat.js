@@ -1,6 +1,6 @@
 import { search } from './search.js';
 
-const MODEL = 'openai/gpt-oss-120b:free';
+const MODEL = 'qwen/qwen3-coder';
 
 const SYSTEM_PROMPT = `You are a Minecraft Bedrock Edition Addon Builder AI. You operate as a live terminal build system. Current year: ${new Date().getFullYear()}. Current date: ${new Date().toISOString().split('T')[0]}.
 
