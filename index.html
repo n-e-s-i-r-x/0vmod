@@ -21,7 +21,6 @@
 html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--t1);font-family:var(--ui);-webkit-font-smoothing:antialiased}
 #app{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
 
-/* HEADER */
 #hdr{height:52px;min-height:52px;background:var(--bg1);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 10px;gap:8px;flex-shrink:0;z-index:50}
 #ham{width:44px;height:44px;flex-shrink:0;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r1);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:border-color .15s}
 #ham:active{border-color:var(--g);background:var(--bg3)}
@@ -35,11 +34,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--t1);font
 .pd.on{animation:pd 2s infinite}
 @keyframes pd{0%,100%{opacity:1}50%{opacity:.3}}
 
-/* OVERLAY */
 #ov{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.7);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .25s}
 #ov.on{opacity:1;pointer-events:all}
 
-/* SIDEBAR */
 #sb{position:fixed;top:0;left:0;bottom:0;width:min(290px,80vw);background:var(--bg1);border-right:1px solid var(--bd);z-index:201;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
 #sb.on{transform:translateX(0)}
 .sh{padding:14px 12px 10px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;min-height:48px}
@@ -64,7 +61,6 @@ select:focus{border-color:var(--b)}
 .cb{width:100%;padding:8px;background:rgba(255,23,68,.06);border:1px solid rgba(255,23,68,.2);border-radius:var(--r1);color:var(--r);font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .cb:active{background:rgba(255,23,68,.15)}
 
-/* CHAT */
 #chat{flex:1;overflow-y:auto;padding:12px 10px;display:flex;flex-direction:column;gap:10px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 
 #empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:24px 16px;gap:10px;text-align:center}
@@ -73,7 +69,6 @@ select:focus{border-color:var(--b)}
 .et{font-size:16px;font-weight:800;background:linear-gradient(90deg,var(--g),var(--b));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .es{font-size:11px;color:var(--t3);line-height:1.5;max-width:220px}
 
-/* MSG */
 .msg{display:flex;flex-direction:column;gap:2px;animation:mi .2s ease-out}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .msg.u{align-items:flex-end}.msg.a{align-items:flex-start}
@@ -84,23 +79,12 @@ select:focus{border-color:var(--b)}
 .msg.u .bb{background:linear-gradient(135deg,#16305e,#0e2448);border:1px solid #264a82;border-bottom-right-radius:3px}
 .msg.a .bb{background:var(--bgc);border:1px solid var(--bd);border-bottom-left-radius:3px}
 
-/* TERMINAL — full width, always visible */
 .msg.a.tm{align-items:stretch}
-.msg.a.tm .bb{
-  background:#050a0e;border:1px solid #0a3020;
-  font-family:var(--mono);font-size:11px;
-  max-width:100%;width:100%;
-  padding:12px;
-  box-shadow:0 0 16px rgba(0,255,65,.05);
-  border-radius:var(--r2);
-  border-bottom-left-radius:3px;
-  overflow-x:auto;
-}
+.msg.a.tm .bb{background:#050a0e;border:1px solid #0a3020;font-family:var(--mono);font-size:11px;max-width:100%;width:100%;padding:12px;box-shadow:0 0 16px rgba(0,255,65,.05);border-radius:var(--r2);border-bottom-left-radius:3px;overflow-x:auto}
 
 .tl{display:block;line-height:1.7;white-space:pre-wrap;word-break:break-word}
 .tp{color:var(--tg)}.ti{color:var(--tc)}.tw{color:var(--ta)}.te{color:var(--r)}.ts{color:var(--g)}.td{color:#1a3525}.tx{color:var(--t2)}
 
-/* file block */
 .fb{margin:6px 0;border:1px solid #0d3322;border-radius:var(--r1);overflow:hidden;background:#040c07}
 .fh{padding:5px 8px;background:#081a0e;border-bottom:1px solid #0d3322;display:flex;align-items:center;gap:6px}
 .fp{font-family:var(--mono);font-size:9px;color:var(--ta);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -108,37 +92,22 @@ select:focus{border-color:var(--b)}
 .fc{padding:8px;overflow-x:auto;font-family:var(--mono);font-size:10px;color:#b2dfdb;white-space:pre;max-height:260px;overflow-y:auto;line-height:1.5}
 .ff{padding:3px 8px;background:#081a0e;border-top:1px solid #0d3322;font-size:8px;color:var(--g);display:flex;align-items:center;gap:4px}
 
-/* download */
-.dl{
-  display:flex;align-items:center;justify-content:center;gap:6px;
-  width:100%;padding:14px;margin-top:10px;
-  background:linear-gradient(135deg,#004d28,#006630);
-  border:1px solid var(--g);border-radius:var(--r2);
-  color:var(--g);font-size:13px;font-weight:700;
-  cursor:pointer;font-family:var(--mono);
-  box-shadow:0 0 20px rgba(0,230,118,.2);
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
-  transition:transform .15s;
-}
+.dl{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:14px;margin-top:10px;background:linear-gradient(135deg,#004d28,#006630);border:1px solid var(--g);border-radius:var(--r2);color:var(--g);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--mono);box-shadow:0 0 20px rgba(0,230,118,.2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:transform .15s}
 .dl:active{transform:scale(.97)}.dl:disabled{opacity:.4;cursor:not-allowed;transform:none}
 
-/* markdown */
 .bb p{margin:0 0 5px}.bb p:last-child{margin:0}
 .bb code{background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:3px;padding:1px 4px;font-family:var(--mono);font-size:10px;color:var(--b)}
 .bb pre{background:#050a0e;border:1px solid var(--bd);border-radius:var(--r1);padding:8px;overflow-x:auto;margin:4px 0}
 .bb pre code{background:none;border:none;padding:0;color:var(--tg);font-size:10px}
 .bb strong{color:var(--y)}.bb ul,.bb ol{padding-left:14px;margin:3px 0}.bb li{margin:1px 0;font-size:11px}
 
-/* typing */
 .typ{display:flex;align-items:center;gap:4px;padding:4px 2px}
 .td{width:5px;height:5px;background:var(--g);border-radius:50%;animation:tp 1.2s ease-in-out infinite}
 .td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
 @keyframes tp{0%,100%{transform:scale(.5);opacity:.3}50%{transform:scale(1);opacity:1}}
-
 .cur{display:inline-block;width:6px;height:12px;background:var(--tg);animation:bk .8s step-end infinite;vertical-align:middle;margin-left:1px}
 @keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
 
-/* INPUT */
 #inp{background:var(--bg1);border-top:1px solid var(--bd);padding:8px 10px;flex-shrink:0;padding-bottom:max(8px,env(safe-area-inset-bottom))}
 .itb{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 #nm{display:flex;align-items:center;gap:4px;padding:6px 12px;background:linear-gradient(135deg,rgba(0,80,40,.4),rgba(0,100,50,.4));border:1px solid rgba(0,230,118,.3);border-radius:16px;color:var(--g);font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;touch-action:manipulation;min-height:32px}
@@ -164,9 +133,7 @@ select:focus{border-color:var(--b)}
 <body>
 <div id="app">
 <header id="hdr">
-  <div id="ham" role="button" tabindex="0" aria-label="Menu">
-    <svg width="18" height="12" viewBox="0 0 18 12" fill="none"><rect width="18" height="2" rx="1" fill="#8a9dba"/><rect y="5" width="18" height="2" rx="1" fill="#8a9dba"/><rect y="10" width="18" height="2" rx="1" fill="#8a9dba"/></svg>
-  </div>
+  <div id="ham" role="button" tabindex="0" aria-label="Menu"><svg width="18" height="12" viewBox="0 0 18 12" fill="none"><rect width="18" height="2" rx="1" fill="#8a9dba"/><rect y="5" width="18" height="2" rx="1" fill="#8a9dba"/><rect y="10" width="18" height="2" rx="1" fill="#8a9dba"/></svg></div>
   <div class="lr"><div class="li">⛏️</div><div class="lt"><b>MC MOD BUILDER</b><span>Bedrock AI</span></div></div>
   <div id="pill"><div class="pd on" id="pd"></div><span id="pt">ready</span></div>
 </header>
@@ -176,8 +143,8 @@ select:focus{border-color:var(--b)}
   <div class="sbb">
     <div class="sg">
       <div class="sgt">🤖 AI Model</div>
-      <div class="si"><div class="sl">Active Model</div><select id="msel"><option value="auto">Auto (Smart Routing)</option><option value="tencent/hy3-preview:free">HunyuanA13B — Builder</option><option value="openai/gpt-oss-120b:free">GPT-OSS 120B — Chat</option></select><div class="badge" id="badg">⚡ auto-routing</div></div>
-      <div class="si"><div class="sl" style="font-size:9px;line-height:1.5;color:var(--t3);font-family:var(--mono)">Mod → HunyuanA13B<br>Chat → GPT-OSS 120B<br>Auto-fallback on error</div></div>
+      <div class="si"><div class="sl">Model</div><div class="badge" id="badg">🧠 GPT-OSS 120B</div></div>
+      <div class="si"><div class="sl" style="font-size:9px;line-height:1.5;color:var(--t3);font-family:var(--mono)">All operations use GPT-OSS 120B via OpenRouter. Single model for analysis, building, and chat.</div></div>
     </div>
     <div class="sg">
       <div class="sgt">🔨 Build</div>
@@ -194,7 +161,7 @@ select:focus{border-color:var(--b)}
       <div class="si"><button class="cb" id="clr">🗑️ Clear Conversation</button></div>
     </div>
   </div>
-  <div class="sf">MC Bedrock Mod Builder v3.0<br>Powered by OpenRouter AI</div>
+  <div class="sf">MC Bedrock Mod Builder v3.0<br>GPT-OSS 120B · OpenRouter</div>
 </aside>
 <main id="chat">
   <div id="empty">
@@ -217,7 +184,7 @@ select:focus{border-color:var(--b)}
 </div>
 
 <script>
-const S={msg:[],files:{},building:false,done:false,streaming:false,cfg:{model:'auto',termUI:true,autoZip:true,research:true,fs:13}};
+const S={msg:[],files:{},building:false,done:false,streaming:false,cfg:{termUI:true,autoZip:true,research:true,fs:13}};
 const $=id=>document.getElementById(id);
 const chat=$('chat'),tx=$('tx'),go=$('go'),pd=$('pd'),pt=$('pt'),md2=$('md2'),ml2=$('ml2'),empty=$('empty'),toast=$('toast');
 
@@ -233,11 +200,9 @@ $('sx').addEventListener('touchend',e=>{e.preventDefault();closeSB()},{passive:f
 $('ov').addEventListener('click',closeSB);
 
 /* ═══ SETTINGS ═══ */
-function loadCfg(){try{const s=localStorage.getItem('mcb4');if(s)Object.assign(S.cfg,JSON.parse(s))}catch(e){}applyCfg()}
-function saveCfg(){try{localStorage.setItem('mcb4',JSON.stringify(S.cfg))}catch(e){}}
-function applyCfg(){$('msel').value=S.cfg.model;$('fsel').value=String(S.cfg.fs);const m={t:'termUI',z:'autoZip',r:'research'};['t','z','r'].forEach(k=>{$('tg-'+k).classList.toggle('on',!!S.cfg[m[k]])});tx.style.fontSize=S.cfg.fs+'px';updB()}
-function updB(){const b=$('badg'),m=S.cfg.model;b.textContent=m==='auto'?'⚡ auto-routing':m.includes('hy3')?'🧠 HunyuanA13B':'💪 GPT-OSS 120B'}
-$('msel').onchange=e=>{S.cfg.model=e.target.value;updB();saveCfg()};
+function loadCfg(){try{const s=localStorage.getItem('mcb5');if(s)Object.assign(S.cfg,JSON.parse(s))}catch(e){}applyCfg()}
+function saveCfg(){try{localStorage.setItem('mcb5',JSON.stringify(S.cfg))}catch(e){}}
+function applyCfg(){$('fsel').value=String(S.cfg.fs);const m={t:'termUI',z:'autoZip',r:'research'};['t','z','r'].forEach(k=>{$('tg-'+k).classList.toggle('on',!!S.cfg[m[k]])});tx.style.fontSize=S.cfg.fs+'px'}
 $('fsel').onchange=e=>{S.cfg.fs=+e.target.value;tx.style.fontSize=S.cfg.fs+'px';saveCfg()};
 const tgm={t:'termUI',z:'autoZip',r:'research'};
 ['t','z','r'].forEach(k=>{$('tg-'+k).addEventListener('click',function(){this.classList.toggle('on');S.cfg[tgm[k]]=this.classList.contains('on');saveCfg()})});
@@ -273,27 +238,18 @@ function buildQueries(text){
 
 /* ═══ INTENT (AI) ═══ */
 async function detectIntent(text){
-  try{const r=await fetch('/api/intent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});if(!r.ok)return'chat';const d=await r.json();return d.intent==='mod'?'mod':'chat'}catch(e){return'chat'}
+  try{const r=await fetch('/api/intent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});if(!r.ok)return'chat';const d=await r.json();return['build','clarify'].includes(d.intent)?d.intent:'chat'}catch(e){return'chat'}
 }
 
 /* ═══ SILENT RESEARCH ═══ */
 async function silentResearch(text){
-  const queries=buildQueries(text);
-  let all=[],answer=null;
-  for(const q of queries){
-    try{
-      const r=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});
-      const d=await r.json();if(d.answer)answer=d.answer;all.push(...(d.results||[]));
-    }catch(e){}
-  }
+  const queries=buildQueries(text);let all=[],answer=null;
+  for(const q of queries){try{const r=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});const d=await r.json();if(d.answer)answer=d.answer;all.push(...(d.results||[]))}catch(e){}}
   const seen=new Set();all=all.filter(r=>{if(seen.has(r.url))return false;seen.add(r.url);return true});
   let ctx='Research date: '+new Date().toISOString()+'\n\n';
   if(answer)ctx+='Extracted answer: '+answer+'\n\n';
-  ctx+='Sources:\n\n';
-  all.slice(0,10).forEach((r,i)=>{ctx+='['+(i+1)+'] '+r.title+'\n'+r.url+'\n'+r.snippet+'\n\n'});
-  const ver=detectVer(text);
-  if(ver&&ver!=='latest')ctx+='\nUser target version: '+ver+'\n';
-  else ctx+='\nNo user version — use latest from sources.\n';
+  ctx+='Sources:\n\n';all.slice(0,10).forEach((r,i)=>{ctx+='['+(i+1)+'] '+r.title+'\n'+r.url+'\n'+r.snippet+'\n\n'});
+  const ver=detectVer(text);if(ver&&ver!=='latest')ctx+='\nUser target version: '+ver+'\n';else ctx+='\nNo user version — use latest from sources.\n';
   return ctx;
 }
 
@@ -310,35 +266,33 @@ async function send(){
   tx.value='';tx.style.height='auto';
   go.disabled=true;S.streaming=true;
   setStatus('analyzing...',true);
-
   S.msg.push({role:'user',content:text});
   addUsr(text);
 
   // AI intent detection
   const intent=await detectIntent(text);
-  const isMod=intent==='mod';
-  if(isMod&&!S.building)setMode(true);
-  if(!isMod&&S.building)setMode(false);
+  const isBuild=intent==='build';
+  const isClarify=intent==='clarify';
 
-  // Silent research (no UI, no hardcoded text)
+  if(isBuild&&!S.building)setMode(true);
+  if(!isBuild&&!isClarify&&S.building)setMode(false);
+
+  // Silent research for build or clarify
   let researchCtx='';
-  if(isMod&&S.cfg.research){
+  if((isBuild||isClarify)&&S.cfg.research){
     setStatus('researching...',true);
     researchCtx=await silentResearch(text);
   }
 
-  // Show typing indicator
-  setStatus('building...',true);
+  setStatus('processing...',true);
   const typing=addTyping();
 
   try{
-    let model=S.cfg.model;
-    if(model==='auto')model=isMod?'tencent/hy3-preview:free':'openai/gpt-oss-120b:free';
-    const resp=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:S.msg,isModMode:isMod,model,researchContext:researchCtx||undefined})});
+    const resp=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:S.msg,isModMode:isBuild,model:'openai/gpt-oss-120b:free',researchContext:researchCtx||undefined})});
     typing.remove();
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||'HTTP '+resp.status)}
-    const mUsed=resp.headers.get('X-Model-Used')||model;
-    const isT=isMod&&S.cfg.termUI;
+    const mUsed=resp.headers.get('X-Model-Used')||'GPT-OSS 120B';
+    const isT=isBuild&&S.cfg.termUI;
     const{bubble:bb}=addAsst(isT,mUsed);
     await stream(resp,bb,isT);
   }catch(e){
@@ -369,20 +323,20 @@ async function stream(resp,bb,isT){
     }
   }finally{cur?.remove()}
   isT?renderT(ce,full,true):renderMD(ce,full);
-  if(isT){
-    parseFiles(full);
-    // Always show download if files were generated
-    if(Object.keys(S.files).length>0) addDL(bb);
-  }
+  if(isT){parseFiles(full);if(Object.keys(S.files).length>0)addDL(bb)}
   S.msg.push({role:'assistant',content:full});scr();
 }
 
 /* ═══ TERMINAL RENDER ═══ */
 function renderT(el,text,fin=false){
-  const ls=text.split('\n');
-  let h='',fO=false,cO=false,fP='',fB='';
+  const ls=text.split('\n');let h='',fO=false,cO=false,fP='',fB='';
   for(let i=0;i<ls.length;i++){
     const l=ls[i];
+    // Detect [NEED_INFO] blocks — render as highlighted question
+    if(/\[NEED_INFO\]/.test(l)){
+      h+='<div style="margin:8px 0;padding:10px;background:#0a1a2a;border:1px solid #1a3a5a;border-radius:6px;color:#00b0ff;font-size:12px;line-height:1.6">';continue;
+    }
+    if(/\[\/NEED_INFO\]/.test(l)){h+='</div>';continue}
     if(/^FILE:\s*\S/.test(l)){
       if(fO&&fP&&cO)h+=fBlk(fP,fB.trim(),false);
       fO=true;cO=false;fP=l.replace(/^FILE:\s*/,'').trim();fB='';continue;
@@ -393,9 +347,7 @@ function renderT(el,text,fin=false){
       fO=cO=false;fP=fB='';continue;
     }
     if(l.includes('[BUILD_COMPLETE]')){
-      h+=tL('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━','td');
-      h+=tL('  ✓  BUILD COMPLETE','ts');
-      S.done=true;setStatus('build complete ✓',false);continue;
+      h+=tL('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━','td');h+=tL('  ✓  BUILD COMPLETE','ts');S.done=true;setStatus('build complete ✓',false);continue;
     }
     if(l.includes('[DOWNLOAD_READY]'))continue;
     if(cO){fB+=l+'\n';continue}
@@ -422,21 +374,36 @@ function tL(t,c){return'<span class="tl '+c+'">'+t+'</span>\n'}
 function fBlk(p,c,streaming){
   const ext=p.split('.').pop().toLowerCase();
   const lang={json:'JSON',js:'JS',ts:'TS',lang:'Lang',txt:'Text'}[ext]||ext.toUpperCase();
-  const hl=ext==='json'?hlJ(c):esc(c);
-  const lines=c.split('\n').length;
-  const sz=c.length<1024?c.length+'B':(c.length/1024).toFixed(1)+'KB';
+  // Clean markdown artifacts from content before display
+  const clean=stripMarkdown(c);
+  const hl=ext==='json'?hlJ(clean):esc(clean);
+  const lines=clean.split('\n').length;
+  const sz=clean.length<1024?clean.length+'B':(clean.length/1024).toFixed(1)+'KB';
   return'<div class="fb"><div class="fh"><span class="fp">📄 '+esc(p)+'</span><span class="fl">'+lang+'</span></div><div class="fc">'+hl+'</div>'+(streaming?'':'<div class="ff">✔ '+lines+' lines · '+sz+'</div>')+'</div>';
 }
+
 function hlJ(s){return esc(s).replace(/"([^"]+)"(\s*:)/g,'<span style="color:#ce93d8">"$1"</span>$2').replace(/:\s*"([^"]*)"/g,': <span style="color:#ffcc80">"$1"</span>').replace(/:\s*(-?\d+\.?\d*)/g,': <span style="color:#80deea">$1</span>').replace(/:\s*(true|false|null)/g,': <span style="color:#80cbc4">$1</span>')}
+
+/* ═══ MARKDOWN STRIPPER (clean files for ZIP) ═══ */
+function stripMarkdown(s){
+  let c=s;
+  // Remove opening code block markers like ```json, ```js, ```
+  c=c.replace(/^```[\w]*\s*\n?/gm,'');
+  // Remove closing code block markers
+  c=c.replace(/\n?```\s*$/gm,'');
+  // Remove any stray ``` on their own line
+  c=c.replace(/^\s*```\s*$/gm,'');
+  return c.trim();
+}
 
 /* ═══ FILE PARSING ═══ */
 function parseFiles(t){
-  // Primary: with FILE_COMPLETE marker
+  // With FILE_COMPLETE marker
   let re=/FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)\n?\[FILE_COMPLETE/g,m;
-  while((m=re.exec(t))!==null){const p=m[1].trim(),c=m[2].trim();if(p&&c)S.files[p]=c}
+  while((m=re.exec(t))!==null){const p=m[1].trim(),c=stripMarkdown(m[2].trim());if(p&&c)S.files[p]=c}
   // Fallback: without marker
-  re=/FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)(?=\nFILE:|\n\[BUILD|\n\[DOWNLOAD|$)/g;
-  while((m=re.exec(t))!==null){const p=m[1].trim(),c=m[2].trim();if(p&&c.length>20&&!S.files[p])S.files[p]=c}
+  re=/FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)(?=\nFILE:|\n\[BUILD|\n\[DOWNLOAD|\n\[NEED_INFO|$)/g;
+  while((m=re.exec(t))!==null){const p=m[1].trim(),c=stripMarkdown(m[2].trim());if(p&&c.length>20&&!S.files[p])S.files[p]=c}
 }
 
 /* ═══ DOWNLOAD ═══ */
@@ -446,9 +413,7 @@ function addDL(bb){
   const b=document.createElement('button');b.className='dl';
   b.textContent='📦 Download Addon ('+n+' files)';
   b.addEventListener('click',()=>dlZip(b));
-  bb.appendChild(b);
-  setStatus('download ready ✓',false);
-  scr();
+  bb.appendChild(b);setStatus('download ready ✓',false);scr();
   if(S.cfg.autoZip)setTimeout(()=>dlZip(b),600);
 }
 
@@ -489,7 +454,7 @@ function addTyping(){const d=document.createElement('div');d.className='msg a';d
 function addErr(m){const d=document.createElement('div');d.className='msg a';d.innerHTML='<div class="mm">'+fT()+'</div><div class="bb" style="border-color:var(--r);color:var(--r)">❌ '+esc(m)+'<br><span style="font-size:10px;color:var(--t3);display:block;margin-top:3px">Check connection and retry.</span></div>';chat.appendChild(d);scr()}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function fT(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-function fM(m){if(m.includes('hy3'))return'HunyuanA13B';if(m.includes('120b'))return'GPT-OSS 120B';return m.split('/').pop().split(':')[0]}
+function fM(m){if(m.includes('oss'))return'GPT-OSS 120B';return m.split('/').pop().split(':')[0]}
 function scr(){requestAnimationFrame(()=>{chat.scrollTop=chat.scrollHeight})}
 function showToast(m,t=''){toast.textContent=m;toast.className='show '+t;clearTimeout(toast._t);toast._t=setTimeout(()=>{toast.className=''},2600)}
 
