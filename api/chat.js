@@ -1,7 +1,7 @@
 import { search } from './search.js';
 
-const BUILDER_MODEL  = 'deepseek/deepseek-r1-0528';
-const VERIFIER_MODEL = 'deepseek/deepseek-r1-0528-qwen3-8b';
+const BUILDER_MODEL  = 'deepseek/deepseek-v4-pro';
+const VERIFIER_MODEL = 'deepseek/deepseek-v4-flash';
 
 // ─────────────────────────────────────────────
 // BUILDER SYSTEM PROMPT
