@@ -1,6 +1,7 @@
 {
   "version": 2,
   "routes": [
+    { "src": "/api/intent", "dest": "/api/intent.js" },
     { "src": "/api/search", "dest": "/api/search.js" },
     { "src": "/api/(.*)",   "dest": "/api/$1" }
   ]
