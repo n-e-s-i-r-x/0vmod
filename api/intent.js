@@ -17,7 +17,7 @@ export default async function handler(req, res) {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://mc-mod-builder.vercel.app',
+        'HTTP-Referer': 'https://0vmod.vercel.app',
         'X-Title': 'MC Intent'
       },
       body: JSON.stringify({
