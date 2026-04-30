@@ -30,54 +30,37 @@ async function tryTavily(query, apiKey) {
     const r = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        query,
-        search_depth: 'advanced',
-        include_answer: true,
-        include_raw_content: false,
-        max_results: 8,
-      }),
+      body: JSON.stringify({ query, search_depth: 'advanced', include_answer: true, include_raw_content: false, max_results: 8 })
     });
     if (!r.ok) return null;
     const data = await r.json();
     return {
-      results: (data.results || []).map(x => ({
-        title: x.title || '', url: x.url || '', snippet: x.content || '', score: x.score || 0
-      })),
+      results: (data.results || []).map(x => ({ title: x.title || '', url: x.url || '', snippet: x.content || '', score: x.score || 0 })),
       answer: data.answer || null,
-      source: 'tavily',
+      source: 'tavily'
     };
   } catch (e) { console.error('Tavily:', e); return null; }
 }
 
 async function tryWikipediaDeep(query) {
   try {
-    const sUrl = 'https://en.wikipedia.org/w/api.php?' + new URLSearchParams({
-      action: 'query', list: 'search', srsearch: query, format: 'json', srlimit: '5',
-      srprop: 'snippet|titlesnippet', origin: '*'
-    });
-    const sRes = await fetch(sUrl, { headers: { 'User-Agent': 'MCModBuilder/3.0' } });
-    const sData = await sRes.json();
-    const hits = sData?.query?.search || [];
+    const sRes = await fetch('https://en.wikipedia.org/w/api.php?' + new URLSearchParams({
+      action: 'query', list: 'search', srsearch: query, format: 'json', srlimit: '5', srprop: 'snippet', origin: '*'
+    }), { headers: { 'User-Agent': 'MCModBuilder/3.0' } });
+    const hits = (await sRes.json())?.query?.search || [];
     if (!hits.length) return null;
     const results = [];
     for (const hit of hits.slice(0, 4)) {
       try {
-        const eUrl = 'https://en.wikipedia.org/w/api.php?' + new URLSearchParams({
+        const eRes = await fetch('https://en.wikipedia.org/w/api.php?' + new URLSearchParams({
           action: 'query', prop: 'extracts|info', exintro: 'true', explaintext: 'true',
-          exsectionformat: 'plain', titles: hit.title, format: 'json', inprop: 'url', origin: '*'
-        });
-        const eRes = await fetch(eUrl, { headers: { 'User-Agent': 'MCModBuilder/3.0' } });
-        const eData = await eRes.json();
-        const page = Object.values(eData?.query?.pages || {})[0];
+          titles: hit.title, format: 'json', inprop: 'url', origin: '*'
+        }), { headers: { 'User-Agent': 'MCModBuilder/3.0' } });
+        const page = Object.values((await eRes.json())?.query?.pages || {})[0];
         if (page?.extract?.length > 50) {
-          results.push({
-            title: page.title,
-            url: page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g, '_'))}`,
-            snippet: page.extract.replace(/\n{2,}/g, '\n').trim().slice(0, 600),
-          });
+          results.push({ title: page.title, url: page.fullurl || '', snippet: page.extract.replace(/\n{2,}/g, '\n').trim().slice(0, 600) });
         }
-      } catch (e) { /* skip */ }
+      } catch (_) {}
     }
     return results.length ? { results, answer: null, source: 'wikipedia' } : null;
   } catch (e) { console.error('Wiki:', e); return null; }
@@ -85,31 +68,15 @@ async function tryWikipediaDeep(query) {
 
 async function tryDDG(query) {
   try {
-    const url = 'https://api.duckduckgo.com/?' + new URLSearchParams({
+    const r = await fetch('https://api.duckduckgo.com/?' + new URLSearchParams({
       q: query, format: 'json', no_redirect: '1', no_html: '1', skip_disambig: '1'
-    });
-    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 MCModBuilder/3.0' } });
+    }), { headers: { 'User-Agent': 'Mozilla/5.0 MCModBuilder/3.0' } });
     const data = await r.json();
     const results = [];
     let answer = null;
     if (data.Answer) answer = data.Answer;
-    if (data.AbstractText?.length > 30) {
-      results.push({
-        title: data.Heading || query,
-        url: data.AbstractURL || '',
-        snippet: data.AbstractText.slice(0, 500),
-      });
-    }
-    for (const t of (data.RelatedTopics || [])) {
-      if (results.length >= 4) break;
-      if (t.Text?.length > 20 && t.FirstURL) {
-        results.push({
-          title: t.Text.split(' - ')[0].slice(0, 80),
-          url: t.FirstURL,
-          snippet: t.Text.slice(0, 300),
-        });
-      }
-    }
+    if (data.AbstractText?.length > 30) results.push({ title: data.Heading || query, url: data.AbstractURL || '', snippet: data.AbstractText.slice(0, 500) });
+    for (const t of (data.RelatedTopics || [])) { if (results.length >= 4) break; if (t.Text?.length > 20 && t.FirstURL) results.push({ title: t.Text.split(' - ')[0].slice(0, 80), url: t.FirstURL, snippet: t.Text.slice(0, 300) }); }
     return (results.length || answer) ? { results, answer, source: 'ddg' } : null;
   } catch (e) { console.error('DDG:', e); return null; }
 }
