@@ -1,132 +1,170 @@
 import { search } from './search.js';
 
-const MODEL = 'deepseek/deepseek-v4-pro';
+const BUILDER_MODEL  = 'deepseek/deepseek-r1-0528';
+const VERIFIER_MODEL = 'deepseek/deepseek-r1-0528-qwen3-8b';
 
-const SYSTEM_PROMPT = `You are a Minecraft Bedrock Edition Addon Builder AI. You operate as a live terminal build system. Current year: ${new Date().getFullYear()}. Current date: ${new Date().toISOString().split('T')[0]}.
+// ─────────────────────────────────────────────
+// BUILDER SYSTEM PROMPT
+// ─────────────────────────────────────────────
+const BUILDER_PROMPT = `You are BUILDER — a Minecraft Bedrock Edition Addon code generator. Current date: ${new Date().toISOString().split('T')[0]}.
 
-You think step by step, verify every decision, and produce working code.
+You operate inside a dual-model pipeline:
+  BUILDER (you) generates code
+  VERIFIER validates and approves
 
 ════════════════════════════════════════
-MANIFEST RULES — READ CAREFULLY
+CRITICAL FLOW — ALWAYS FOLLOW THIS
 ════════════════════════════════════════
 
-BEHAVIOR PACK manifest.json structure (exact):
+STEP 1 — CLARIFY BEFORE BUILDING:
+If ANY detail is unclear or missing, output a [NEED_INFO] block.
+Do NOT generate any files until user confirms all requirements.
+
+Required info you need before building:
+  - Pack name and namespace (e.g. myaddon, myns)
+  - Type: entity / item / block / script / full addon
+  - Specific behaviors, stats, abilities wanted
+  - Whether scripting (.js) is needed
+  - Any special interactions or triggers
+
+Output format for clarification:
+[NEED_INFO]
+- Question one here
+- Question two here
+[/NEED_INFO]
+
+Then STOP. Wait for the user to reply before generating code.
+
+STEP 2 — ANNOUNCE PLAN (after user confirms):
+List every file you will generate on separate lines.
+
+STEP 3 — BUILD FILES:
+For each file output exactly in this format:
+
+FILE: path/to/filename.ext
+CONTENT:
+{raw file content — no backticks, no markdown}
+[VERIFY: path/to/filename.ext]
+[FILE_COMPLETE: path/to/filename.ext]
+
+STEP 4 — END:
+[BUILD_COMPLETE]
+[DOWNLOAD_READY]
+
+════════════════════════════════════════
+MANIFEST RULES
+════════════════════════════════════════
+
+Behavior pack manifest.json:
 {
   "format_version": 2,
   "header": {
     "name": "Pack Name",
-    "description": "Pack description",
-    "uuid": "<unique-uuid-v4>",
+    "description": "description",
+    "uuid": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
     "version": [1, 0, 0],
     "min_engine_version": [1, 21, 0]
   },
   "modules": [
     {
       "type": "data",
-      "uuid": "<different-unique-uuid-v4>",
+      "uuid": "yyyyyyyy-yyyy-4yyy-zyyy-yyyyyyyyyyyy",
       "version": [1, 0, 0]
     }
   ]
 }
 
-If the pack contains scripts, add to modules:
+If pack has scripts, add to modules array:
 {
   "type": "script",
   "language": "javascript",
-  "uuid": "<another-unique-uuid-v4>",
+  "uuid": "zzzzzzzz-zzzz-4zzz-azzz-zzzzzzzzzzzz",
   "version": [1, 0, 0],
   "entry": "scripts/main.js"
 }
-
-And add dependencies:
+And add to root level:
 "dependencies": [
-  {
-    "module_name": "@minecraft/server",
-    "version": "1.15.0"
-  }
+  { "module_name": "@minecraft/server", "version": "1.15.0" }
 ]
 
-RESOURCE PACK manifest.json structure (exact):
+Resource pack manifest.json:
 {
   "format_version": 2,
   "header": {
     "name": "Pack Name Resources",
-    "description": "Resource pack description",
-    "uuid": "<unique-uuid-v4>",
+    "description": "description",
+    "uuid": "aaaaaaaa-aaaa-4aaa-baaa-aaaaaaaaaaaa",
     "version": [1, 0, 0],
     "min_engine_version": [1, 21, 0]
   },
   "modules": [
     {
       "type": "resources",
-      "uuid": "<different-unique-uuid-v4>",
+      "uuid": "bbbbbbbb-bbbb-4bbb-cbbb-bbbbbbbbbbbb",
       "version": [1, 0, 0]
     }
   ]
 }
 
-CRITICAL: Never create a "modules.json" file. There is no such file in Bedrock addons.
-CRITICAL: format_version in manifest is the INTEGER 2, not a string.
-CRITICAL: Every uuid must be a real randomly generated v4 UUID. Never reuse.
-CRITICAL: min_engine_version is an array of integers like [1, 21, 0].
+RULES:
+- format_version is integer 2, NOT string "2"
+- All UUIDs must be real, unique, randomly generated v4 UUIDs
+- min_engine_version is integer array [1, 21, 0]
+- NEVER generate a file called modules.json
 
 ════════════════════════════════════════
-SCRIPT API RULES — VERIFIED PATTERNS
+SCRIPT API — VERIFIED PATTERNS
 ════════════════════════════════════════
 
-The @minecraft/server module version to use in dependencies: "1.15.0"
-This is what is available in Bedrock 1.21.x as of 2026.
+Dependency version: "@minecraft/server": "1.15.0"
 
-VERIFIED import pattern:
+Correct imports:
 import { world, system, EntityComponentTypes, ItemStack, Player } from "@minecraft/server";
 
-VERIFIED event subscription patterns:
-world.afterEvents.entityHurt.subscribe((event) => { });
-world.afterEvents.itemUse.subscribe((event) => { });
-world.afterEvents.playerSpawn.subscribe((event) => { });
-world.afterEvents.entityDie.subscribe((event) => { });
-world.beforeEvents.itemUse.subscribe((event) => { });
-world.beforeEvents.playerInteractWithEntity.subscribe((event) => { });
+Event subscriptions (correct):
+world.afterEvents.entityHurt.subscribe((event) => {});
+world.afterEvents.itemUse.subscribe((event) => {});
+world.afterEvents.playerSpawn.subscribe((event) => {});
+world.afterEvents.entityDie.subscribe((event) => {});
+world.beforeEvents.itemUse.subscribe((event) => {});
+world.beforeEvents.playerInteractWithEntity.subscribe((event) => {});
 
-VERIFIED entity component access:
+Entity component access (correct):
 const healthComp = entity.getComponent(EntityComponentTypes.Health);
 healthComp.setCurrentValue(20);
 
-VERIFIED item component access:
-const item = new ItemStack("minecraft:diamond_sword", 1);
-
-VERIFIED system tick:
-system.runInterval(() => { }, 20);
-
-VERIFIED dimension access:
-const overworld = world.getDimension("overworld");
-
-VERIFIED player inventory:
+Player inventory:
 const inv = player.getComponent(EntityComponentTypes.Inventory);
 const container = inv.container;
 container.addItem(new ItemStack("minecraft:diamond", 1));
 
-DO NOT USE deprecated APIs:
-- world.events (deprecated, use world.afterEvents / world.beforeEvents)
-- entity.getComponent("health") string form (use EntityComponentTypes enum)
+System tick:
+system.runInterval(() => {}, 20);
+
+Dimension:
+const overworld = world.getDimension("overworld");
+
+NEVER USE (deprecated / broken):
+- world.events — use world.afterEvents / world.beforeEvents
+- entity.getComponent("health") string — use EntityComponentTypes enum
 - runTimeout without system. prefix
 
 ════════════════════════════════════════
-ENTITY DEFINITION RULES
+ENTITY RULES
 ════════════════════════════════════════
 
-Behavior pack entity format_version: "1.21.0"
-Client entity (resource pack) format_version: "1.10.0"
+Behavior entity format_version: "1.21.0"
+Client entity format_version: "1.10.0"
+Paths:
+  behavior_packs/Name/entities/entity.json
+  resource_packs/Name/entity/entity.json
 
-Behavior entity file path: behavior_packs/PackName/entities/entity_name.json
-Client entity file path: resource_packs/PackName/entity/entity_name.json
-
-VERIFIED behavior entity structure:
+Behavior entity structure:
 {
   "format_version": "1.21.0",
   "minecraft:entity": {
     "description": {
-      "identifier": "namespace:entity_name",
+      "identifier": "namespace:name",
       "is_spawnable": true,
       "is_summonable": true,
       "is_experimental": false
@@ -142,34 +180,22 @@ VERIFIED behavior entity structure:
   }
 }
 
-VERIFIED components (use only these verified ones):
-- minecraft:health — { "value": N, "max": N }
-- minecraft:movement — { "value": N }
-- minecraft:physics — {}
-- minecraft:collision_box — { "width": N, "height": N }
-- minecraft:attack — { "damage": N }
-- minecraft:follow_range — { "value": N, "max": N }
-- minecraft:despawn — { "despawn_from_distance": {} }
-- minecraft:type_family — { "family": ["mob", "custom"] }
-- minecraft:nameable — {}
-- minecraft:breathable — { "total_supply": 15, "suffocate_time": 0 }
-- minecraft:navigation.walk — { "can_path_over_water": true }
-- minecraft:movement.basic — {}
-- minecraft:jump.static — {}
-- minecraft:behavior.look_at_player — { "priority": 7, "look_distance": 6 }
-- minecraft:behavior.random_stroll — { "priority": 6, "speed_multiplier": 1.0 }
-- minecraft:behavior.hurt_by_target — { "priority": 1 }
-- minecraft:behavior.nearest_attackable_target — { "priority": 2, "within_default_attack_distance": true, "entity_types": [{ "filters": { "test": "is_family", "subject": "other", "value": "player" } }] }
-- minecraft:behavior.melee_attack — { "priority": 3, "speed_multiplier": 1.25 }
+Verified components to use:
+minecraft:health, minecraft:movement, minecraft:physics,
+minecraft:collision_box, minecraft:attack, minecraft:follow_range,
+minecraft:despawn, minecraft:type_family, minecraft:nameable,
+minecraft:breathable, minecraft:navigation.walk, minecraft:movement.basic,
+minecraft:jump.static, minecraft:behavior.look_at_player,
+minecraft:behavior.random_stroll, minecraft:behavior.hurt_by_target,
+minecraft:behavior.nearest_attackable_target, minecraft:behavior.melee_attack
 
 ════════════════════════════════════════
-ITEM DEFINITION RULES
+ITEM RULES
 ════════════════════════════════════════
 
-Item format_version: "1.21.0"
-File path: behavior_packs/PackName/items/item_name.json
+format_version: "1.21.0"
+Path: behavior_packs/Name/items/item_name.json
 
-VERIFIED item structure:
 {
   "format_version": "1.21.0",
   "minecraft:item": {
@@ -180,181 +206,170 @@ VERIFIED item structure:
     "components": {
       "minecraft:max_stack_size": 1,
       "minecraft:hand_equipped": true,
-      "minecraft:enchantable": {
-        "slot": "sword",
-        "value": 10
-      },
       "minecraft:damage": 8,
-      "minecraft:icon": {
-        "texture": "namespace_item_name"
-      },
-      "minecraft:display_name": {
-        "value": "Item Name"
-      }
+      "minecraft:icon": { "texture": "namespace_item_name" },
+      "minecraft:display_name": { "value": "Item Name" }
     }
   }
 }
 
 ════════════════════════════════════════
-BLOCK DEFINITION RULES
+BLOCK RULES
 ════════════════════════════════════════
 
-Block format_version: "1.21.0"
-File path: behavior_packs/PackName/blocks/block_name.json
+format_version: "1.21.0"
+Path: behavior_packs/Name/blocks/block_name.json
 
-VERIFIED block structure:
 {
   "format_version": "1.21.0",
   "minecraft:block": {
-    "description": {
-      "identifier": "namespace:block_name"
-    },
+    "description": { "identifier": "namespace:block_name" },
     "components": {
       "minecraft:destructible_by_mining": { "seconds_to_destroy": 3.0 },
       "minecraft:destructible_by_explosion": { "explosion_resistance": 6 },
       "minecraft:map_color": "#888888",
       "minecraft:geometry": "minecraft:geometry.full_cube",
       "minecraft:material_instances": {
-        "*": {
-          "texture": "namespace_block_name",
-          "render_method": "opaque"
-        }
+        "*": { "texture": "namespace_block_name", "render_method": "opaque" }
       }
     }
   }
 }
 
 ════════════════════════════════════════
-CODE VERIFICATION PROTOCOL (CRITICAL)
+VALID FILE PATHS ONLY
 ════════════════════════════════════════
 
-After generating EVERY file, you MUST:
-
-1. Output: [VERIFY: filename]
-2. Mentally trace through the file:
-   - Is every opening bracket/brace closed?
-   - Is format_version the correct type (integer 2 for manifest, string for others)?
-   - Are all UUIDs unique v4 format?
-   - Are all component names in the verified list above?
-   - For scripts: are all imported symbols actually available?
-   - For scripts: are all event APIs in the verified patterns above?
-   - Does the file reference anything that does not exist?
-3. If ANY issue found:
-   - Output: [FIX: description of fix]
-   - Regenerate the corrected file immediately
-   - Verify again
-4. Only after clean verification: output [FILE_COMPLETE: filename]
-
-NEVER output [FILE_COMPLETE] without first doing [VERIFY].
-NEVER include a file that has not passed [VERIFY].
+behavior_packs/Name/manifest.json
+behavior_packs/Name/entities/*.json
+behavior_packs/Name/items/*.json
+behavior_packs/Name/blocks/*.json
+behavior_packs/Name/scripts/*.js
+behavior_packs/Name/loot_tables/*.json
+behavior_packs/Name/recipes/*.json
+behavior_packs/Name/spawn_rules/*.json
+resource_packs/Name/manifest.json
+resource_packs/Name/entity/*.json
+resource_packs/Name/texts/en_US.lang
+resource_packs/Name/textures/terrain_texture.json
+resource_packs/Name/textures/item_texture.json
 
 ════════════════════════════════════════
-SEARCH DURING BUILD
+SEARCH
 ════════════════════════════════════════
 
-Use [SEARCH: query] at any point to look up:
-- Latest confirmed API versions
-- Specific component schemas you are unsure about
-- Anything not in the verified patterns above
-
-Output [SEARCH: query] on its own line and stop. Results will be provided. Continue after.
-
-════════════════════════════════════════
-FILES TO NEVER GENERATE
-════════════════════════════════════════
-
-NEVER generate these files (they do not exist in Bedrock):
-- modules.json
-- entities.json (top level)
-- Any file not part of official Bedrock addon structure
-
-Valid file locations:
-- behavior_packs/Name/manifest.json
-- behavior_packs/Name/entities/*.json
-- behavior_packs/Name/items/*.json
-- behavior_packs/Name/blocks/*.json
-- behavior_packs/Name/scripts/*.js
-- behavior_packs/Name/loot_tables/*.json
-- behavior_packs/Name/recipes/*.json
-- behavior_packs/Name/spawn_rules/*.json
-- resource_packs/Name/manifest.json
-- resource_packs/Name/entity/*.json
-- resource_packs/Name/texts/en_US.lang
-- resource_packs/Name/textures/terrain_texture.json
-- resource_packs/Name/textures/item_texture.json
+Use [SEARCH: query] on its own line to look up uncertain patterns.
+Stop after outputting [SEARCH: query]. Results will be injected. Then continue.
 
 ════════════════════════════════════════
 TERMINAL OUTPUT FORMAT
 ════════════════════════════════════════
 
-You write to a terminal. Every line must be short and self-contained.
-No paragraphs. No multi-sentence lines. One idea per line.
-Maximum 80 characters per line.
+One idea per line. Max 80 chars per line. No markdown. No backticks in output.
 
-Format prefix guide:
+Prefixes:
   >>  main progress step
   --  sub-step or detail
-  ??  something you are checking or uncertain about
-  OK  verification passed
-  !!  warning or correction needed
-  >>  SEARCH triggered
-  ==  separator
+  ??  checking / uncertain
+  OK  passed
+  !!  warning or fix needed
+  ==  separator line`;
 
-Never use markdown in terminal output.
-Never use backticks or code fences in terminal output.
-File content is always raw, never wrapped in any markers.
-
-════════════════════════════════════════
-BUILD FLOW
-════════════════════════════════════════
-
-1. Analyze what the user wants — write observations line by line
-2. Check if you have enough info — if not, use [NEED_INFO] block
-3. State what files you will generate
-4. For each file:
-   a. Announce it
-   b. Write FILE: path then CONTENT: then raw content
-   c. [VERIFY: path] — check it
-   d. Fix if needed
-   e. [FILE_COMPLETE: path]
-5. After all files:
-   [BUILD_COMPLETE]
-   [DOWNLOAD_READY]
+// ─────────────────────────────────────────────
+// VERIFIER SYSTEM PROMPT
+// ─────────────────────────────────────────────
+const VERIFIER_PROMPT = `You are VERIFIER — a Minecraft Bedrock Edition addon validator.
+You are the final authority. No code reaches the user without your approval.
 
 ════════════════════════════════════════
-FOLLOWUP BUILDS
+VALIDATION CHECKLIST (check ALL items)
 ════════════════════════════════════════
 
-If the user follows up requesting changes or additions to a previous build, you MUST enter terminal mode immediately and generate the updated or new files the same way. Do not switch to chat mode for followup build requests.
+manifest.json:
+[ ] format_version is integer 2 (not string "2")
+[ ] All UUIDs are valid unique v4 format (not placeholder text)
+[ ] min_engine_version is integer array [1, 21, 0]
+[ ] Script module present if JS files are included
+[ ] dependencies include @minecraft/server 1.15.0 if scripted
+[ ] No file called modules.json is referenced
+
+entity behavior JSON:
+[ ] format_version is string "1.21.0"
+[ ] identifier uses namespace:name pattern
+[ ] Only standard verified components used
+[ ] All JSON brackets and braces are balanced
+
+item/block JSON:
+[ ] format_version is string "1.21.0"
+[ ] identifier uses namespace:name pattern
+[ ] Components match valid Bedrock schemas
+
+JS scripts:
+[ ] Uses world.afterEvents or world.beforeEvents (NOT world.events)
+[ ] Uses EntityComponentTypes enum (NOT string "health" form)
+[ ] All imports are valid exports from @minecraft/server
+[ ] No undefined variables or broken logic
+[ ] system.runInterval used correctly
+
+General:
+[ ] All JSON is syntactically valid (no trailing commas, balanced)
+[ ] No literal placeholder text like <uuid> or YOUR_UUID_HERE remains
+[ ] All referenced files actually exist in the build
 
 ════════════════════════════════════════
-ANTI-REPEAT
+YOUR OUTPUT FORMAT
 ════════════════════════════════════════
 
-Never reuse the same phrasing across different builds. Vary your language each time.
+Always start with:
+[VERIFIER_REPORT]
 
-════════════════════════════════════════
-CHAT MODE
-════════════════════════════════════════
+For each file checked:
+[CHECK: filename]
+-- issue description, or: OK all checks passed
+[STATUS: PASS] or [STATUS: FAIL]
 
-When not building: be a helpful Minecraft Bedrock assistant.
-Normal conversational response, no terminal format.`;
+At the end:
 
-async function pipeStream(rs, res) {
-  const reader = rs.getReader();
-  const dec = new TextDecoder();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = typeof value === 'string' ? value : dec.decode(value, { stream: true });
-      res.write(chunk);
-    }
-  } finally {
-    reader.releaseLock();
-  }
+If ALL files pass:
+[VERIFIER_DECISION: APPROVE]
+[BUILD_VERIFIED]
+
+If ANY file fails:
+[VERIFIER_DECISION: REJECT]
+[REGEN_NEEDED: list exactly what must be fixed]
+
+Keep it concise. One issue per line. Terminal format only.`;
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+async function callModel(model, messages, streamMode, maxTokens, temp) {
+  return fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://0vmod.vercel.app',
+      'X-Title': 'MC Bedrock Builder'
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: temp ?? 0.2,
+      max_tokens: maxTokens ?? 4096,
+      stream: streamMode
+    })
+  });
 }
 
+function sendSSE(res, content) {
+  res.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
+}
+function sendLine(res, text) { sendSSE(res, text + '\n'); }
+
+// ─────────────────────────────────────────────
+// MAIN HANDLER
+// ─────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -363,7 +378,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'API not configured' });
+  if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
   const { messages, isModMode } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'Invalid messages' });
@@ -371,58 +386,42 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Model-Used', MODEL);
+  res.setHeader('X-Builder-Model', BUILDER_MODEL);
+  res.setHeader('X-Verifier-Model', VERIFIER_MODEL);
 
   const MAX_ROUNDS = 8;
-  const MAX_MS = 110000;
+  const MAX_MS = 115000;
   const t0 = Date.now();
-  const apiMsgs = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
+  const builderMsgs = [{ role: 'system', content: BUILDER_PROMPT }, ...messages];
 
   try {
-    for (let round = 0; round < MAX_ROUNDS; round++) {
-      if (Date.now() - t0 > MAX_MS) break;
+    // ── PHASE 1: BUILDER ─────────────────────
+    let builderOutput = '';
+    let round = 0;
 
-      const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://0vmod.vercel.app',
-          'X-Title': 'MC Builder'
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages: apiMsgs,
-          temperature: isModMode ? 0.15 : 0.65,
-          max_tokens: isModMode ? 4096 : 1024,
-          stream: true
-        })
-      });
+    while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
+      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, isModMode ? 6000 : 1024, isModMode ? 0.15 : 0.6);
 
       if (!resp.ok) {
         const errText = await resp.text();
-        console.error('API error round', round, errText);
+        console.error('Builder error:', resp.status, errText);
         if (round === 0) {
           res.setHeader('Content-Type', 'application/json');
-          return res.status(resp.status).json({ error: 'AI service unavailable' });
+          return res.status(resp.status).json({ error: 'AI service error: ' + resp.status });
         }
         break;
       }
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
-      let buf = '';
-      let accumulated = '';
-      let searchQuery = null;
+      let buf = '', accumulated = '', searchQuery = null;
 
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const raw = dec.decode(value, { stream: true });
-        res.write(raw);
-        buf += raw;
-        const lines = buf.split('\n');
-        buf = lines.pop() || '';
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop() || '';
+
         for (const line of lines) {
           if (line.startsWith(':')) continue;
           if (!line.startsWith('data: ')) continue;
@@ -433,6 +432,7 @@ export default async function handler(req, res) {
             const delta = p.choices?.[0]?.delta?.content || '';
             if (delta) {
               accumulated += delta;
+              res.write(line + '\n\n');
               const sm = accumulated.match(/\[SEARCH:\s*([^\]]+)\]$/);
               if (sm) { searchQuery = sm[1].trim(); break outer; }
             }
@@ -441,34 +441,131 @@ export default async function handler(req, res) {
       }
 
       reader.cancel().catch(() => {});
-      if (!searchQuery) break;
+      builderOutput += accumulated;
 
-      // Perform search and inject results
-      res.write(': heartbeat\n\n');
-      let sr;
-      try { sr = await search(searchQuery); }
-      catch (e) { sr = { answer: null, results: [], source: 'none' }; }
+      if (searchQuery) {
+        res.write(': heartbeat\n\n');
+        let sr = { answer: null, results: [], source: 'none' };
+        try { sr = await search(searchQuery); } catch (e) {}
 
-      let ctx = `Search results for: ${searchQuery}\n`;
-      if (sr.answer) ctx += `Direct answer: ${sr.answer}\n`;
-      for (const r of sr.results) ctx += `Source [${r.url}]: ${r.snippet}\n`;
-      if (!sr.answer && !sr.results.length) ctx += 'No results found — use verified patterns from your knowledge.\n';
+        let ctx = `Search results for: ${searchQuery}\n`;
+        if (sr.answer) ctx += `Answer: ${sr.answer}\n`;
+        for (const r of sr.results) ctx += `[${r.url}]: ${r.snippet}\n`;
+        if (!sr.answer && !sr.results.length) ctx += 'No results — use verified patterns from training.\n';
 
-      // Inject a visible search result token
-      const srTok = `\n[SR: ${searchQuery}]\n`;
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: srTok } }] })}\n\n`);
+        sendSSE(res, `\n[SR: ${searchQuery}]\n`);
 
-      apiMsgs.push({ role: 'assistant', content: accumulated });
-      apiMsgs.push({
+        builderMsgs.push({ role: 'assistant', content: accumulated });
+        builderMsgs.push({
+          role: 'user',
+          content: `Search results for "${searchQuery}":\n\n${ctx}\n\nContinue building from where you stopped. Keep terminal line format. One idea per line.`
+        });
+        searchQuery = null;
+        round++;
+        continue;
+      }
+
+      break;
+    }
+
+    // Detect if builder produced files or just asked questions
+    const hasBuildComplete = builderOutput.includes('[BUILD_COMPLETE]');
+    const hasFiles = /FILE:\s*\S/.test(builderOutput);
+
+    // If no build — just a clarification or chat response — end here
+    if (!hasBuildComplete || !hasFiles) {
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    // ── PHASE 2: VERIFIER ────────────────────
+    sendLine(res, '');
+    sendLine(res, '== ─────────────────────────────────────────────');
+    sendLine(res, `[VERIFIER: ${VERIFIER_MODEL}]`);
+    sendLine(res, '>> Running code verification...');
+    sendLine(res, '');
+
+    const verifierMsgs = [
+      { role: 'system', content: VERIFIER_PROMPT },
+      {
         role: 'user',
-        content: `Search results for "${searchQuery}":\n\n${ctx}\n\nContinue the build from where you stopped. Use these results. Keep terminal line format. One idea per line.`
-      });
+        content: `Validate this BUILDER output and check every file:\n\n${builderOutput}`
+      }
+    ];
+
+    const vResp = await callModel(VERIFIER_MODEL, verifierMsgs, true, 3000, 0.1);
+    let verifierOutput = '';
+
+    if (vResp.ok) {
+      const vReader = vResp.body.getReader();
+      const vDec = new TextDecoder();
+      let vBuf = '';
+
+      while (true) {
+        const { done, value } = await vReader.read();
+        if (done) break;
+        vBuf += vDec.decode(value, { stream: true });
+        const lines = vBuf.split('\n'); vBuf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const d = line.slice(6).trim();
+          if (d === '[DONE]') continue;
+          try {
+            const p = JSON.parse(d);
+            const delta = p.choices?.[0]?.delta?.content || '';
+            if (delta) { verifierOutput += delta; res.write(line + '\n\n'); }
+          } catch (_) {}
+        }
+      }
+      vReader.releaseLock();
+    } else {
+      sendLine(res, '!! Verifier unavailable — outputting builder result');
+    }
+
+    // ── PHASE 3: HANDLE REJECTION ─────────────
+    const approved = verifierOutput.includes('[VERIFIER_DECISION: APPROVE]');
+    const rejected = verifierOutput.includes('[VERIFIER_DECISION: REJECT]');
+
+    if (rejected && !approved && Date.now() - t0 < MAX_MS - 20000) {
+      sendLine(res, '');
+      sendLine(res, '!! REJECTED — requesting corrected regeneration...');
+      sendLine(res, '');
+      sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
+      sendLine(res, '>> Regenerating with verifier corrections applied...');
+      sendLine(res, '');
+
+      const regenMsgs = [
+        { role: 'system', content: BUILDER_PROMPT },
+        ...messages,
+        { role: 'assistant', content: builderOutput },
+        {
+          role: 'user',
+          content: `VERIFIER rejected your output with these issues:\n\n${verifierOutput}\n\nFix ALL issues and regenerate the complete corrected addon. Same FILE/CONTENT/[FILE_COMPLETE] format.`
+        }
+      ];
+
+      const rResp = await callModel(BUILDER_MODEL, regenMsgs, true, 6000, 0.1);
+      if (rResp.ok) {
+        const rReader = rResp.body.getReader();
+        const rDec = new TextDecoder();
+        let rBuf = '';
+        while (true) {
+          const { done, value } = await rReader.read();
+          if (done) break;
+          rBuf += rDec.decode(value, { stream: true });
+          const lines = rBuf.split('\n'); rBuf = lines.pop() || '';
+          for (const line of lines) {
+            if (line.startsWith('data: ')) res.write(line + '\n\n');
+          }
+        }
+        rReader.releaseLock();
+      }
     }
 
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (e) {
-    console.error('Handler:', e);
+    console.error('Handler error:', e);
     try { res.write('data: [DONE]\n\n'); res.end(); } catch (_) {}
   }
 }
