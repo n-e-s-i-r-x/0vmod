@@ -4,10 +4,13 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'No message' });
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(200).json({ intent: 'chat' });
+
   try {
     const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -22,15 +25,13 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: `Classify the user message for a Minecraft Bedrock mod builder.
+            content: `Classify the user message. Reply with exactly one word.
 
-"build" — The user is directly and explicitly requesting creation of a specific mod, addon, entity, mob, item, block, script, behavior pack, or resource pack right now with enough detail to start.
+"build" - User is directly requesting creation of a specific Minecraft Bedrock mod, addon, entity, mob, item, block, script, pack right now with enough detail to start building.
+"clarify" - User mentions a mod idea but lacks enough detail, or asks if something is possible, or says things like "can you make".
+"chat" - General questions, how-to, theory, anything not a direct build request.
 
-"clarify" — The user is exploring a mod idea, asking what is possible, providing partial or vague details, asking "can you make", discussing concepts. Needs more information before building.
-
-"chat" — General questions, how-to, theory, discussion about Minecraft, or anything not a creation request.
-
-Respond with exactly one word: build, clarify, or chat`
+One word only: build, clarify, or chat`
           },
           { role: 'user', content: message }
         ],
