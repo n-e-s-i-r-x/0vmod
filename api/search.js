@@ -5,36 +5,34 @@ export async function search(query) {
       const r = await fetch('https://api.tavily.com/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ query, search_depth: 'basic', include_answer: true, max_results: 5 })
+        body: JSON.stringify({ query, search_depth: 'advanced', include_answer: true, max_results: 6 })
       });
       if (r.ok) {
         const d = await r.json();
         return {
           answer: d.answer || null,
-          results: (d.results || []).slice(0, 5).map(x => ({
+          results: (d.results || []).slice(0, 6).map(x => ({
             title: x.title || '',
             url: x.url || '',
-            snippet: (x.content || '').slice(0, 300)
+            snippet: (x.content || '').slice(0, 500)
           })),
           source: 'tavily'
         };
       }
     } catch (e) { console.error('Tavily:', e); }
   }
+
   try {
     const r = await fetch(
-      'https://api.duckduckgo.com/?' +
-      new URLSearchParams({ q: query, format: 'json', no_redirect: '1', no_html: '1', skip_disambig: '1' }),
-      { headers: { 'User-Agent': 'MCMod/3' } }
+      'https://api.duckduckgo.com/?' + new URLSearchParams({ q: query, format: 'json', no_redirect: '1', no_html: '1', skip_disambig: '1' }),
+      { headers: { 'User-Agent': 'MCMod/4' } }
     );
     const d = await r.json();
     const results = [];
-    if (d.AbstractText?.length > 30)
-      results.push({ title: d.Heading || '', url: d.AbstractURL || '', snippet: d.AbstractText.slice(0, 300) });
+    if (d.AbstractText?.length > 30) results.push({ title: d.Heading || '', url: d.AbstractURL || '', snippet: d.AbstractText.slice(0, 400) });
     for (const t of (d.RelatedTopics || [])) {
-      if (results.length >= 3) break;
-      if (t.Text?.length > 20 && t.FirstURL)
-        results.push({ title: t.Text.split(' - ')[0].slice(0, 60), url: t.FirstURL, snippet: t.Text.slice(0, 200) });
+      if (results.length >= 4) break;
+      if (t.Text?.length > 20 && t.FirstURL) results.push({ title: t.Text.split(' - ')[0].slice(0, 80), url: t.FirstURL, snippet: t.Text.slice(0, 300) });
     }
     return { answer: d.Answer || null, results, source: 'ddg' };
   } catch (e) {
