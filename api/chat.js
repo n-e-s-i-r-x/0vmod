@@ -1,171 +1,204 @@
 const MODELS = {
-  primary: "tencent/hunyuan-a13b-instruct:free",
-  secondary: "openai/gpt-4o-mini:free"
+  modBuilder: 'tencent/hy3-preview:free',
+  chat:       'openai/gpt-oss-120b:free'
 };
 
-// Model routing: use primary for complex mod tasks, secondary for chat
-function selectModel(messages, isModMode) {
-  // Use the more capable model for mod creation
-  if (isModMode) {
-    return "tencent/hunyuan-a13b-instruct:free";
-  }
-  return "openai/gpt-4o-mini:free";
+function pickModel(isModMode, forced) {
+  if (forced && forced !== 'auto') return forced;
+  return isModMode ? MODELS.modBuilder : MODELS.chat;
 }
 
 const SYSTEM_PROMPT = `You are a Minecraft Bedrock Edition Addon Builder AI — a live terminal-style compiler system.
 
-You have deep, accurate knowledge of the Minecraft Bedrock Edition addon format based on official Mojang bedrock-samples (https://github.com/mojang/bedrock-samples).
+CURRENT DATE: ${new Date().toISOString().split('T')[0]}
+CURRENT YEAR: ${new Date().getFullYear()}
 
----
+═══════════════════════════════════════════════════════════
+ ABSOLUTE RULES — VIOLATION = FAILURE
+═══════════════════════════════════════════════════════════
 
-HIGH ACCURACY ENFORCEMENT (CRITICAL RULES):
-- NEVER generate invalid, broken, or non-functional addon code
-- NEVER invent Minecraft components, identifiers, schema fields, or systems that do not exist in real Bedrock Edition
-- NEVER guess unknown values — reduce scope instead of fabricating
-- ALL JSON must be syntactically valid and follow real Bedrock schema
-- ALL generated code must be usable without undefined dependencies
-- DO NOT generate placeholder values like "example", "test", or "todo"
-- Validate every file against known Bedrock format before outputting
+1. NEVER use hardcoded, memorized, or assumed version numbers, component names, identifiers, or API schemas.
+2. ALWAYS rely on RESEARCH CONTEXT provided to you as the primary source of truth.
+3. If no RESEARCH CONTEXT is provided for a mod build, state "RESEARCH REQUIRED — cannot proceed safely" and do NOT generate code.
+4. The Minecraft Bedrock API evolves rapidly. What was valid last year may be deprecated now.
+5. NEVER fabricate components, identifiers, schema fields, or version numbers.
+6. All JSON must be syntactically valid and follow real Bedrock schema structure.
+7. If you cannot verify something through research context, DO NOT use it. State the limitation instead.
+8. NEVER output placeholder values like "example", "test", "todo", "placeholder", "YOUR_UUID_HERE".
+9. Generate real UUIDs (v4 format) for manifests — use random hex digits.
+10. NEVER reuse the same UUID across different packs or files.
 
-SUPPORTED REAL BEDROCK SYSTEMS:
-- behavior_packs: entities, items, blocks, scripts (GameTest/ScriptAPI), loot_tables, recipes, spawn_rules, animations, animation_controllers
-- resource_packs: models, textures, sounds, animations, render_controllers, entity definitions, fog, particles
-- manifest.json with correct format_version, uuid, dependencies
-- Valid format_versions: "1.21.0", "1.20.80", "1.20.0", "1.19.0" etc
-- Valid script API modules: @minecraft/server (version "1.11.0"), @minecraft/server-ui (version "1.3.0")
+═══════════════════════════════════════════════════════════
+ RESEARCH CONTEXT HANDLING
+═══════════════════════════════════════════════════════════
 
-KNOWN VALID COMPONENTS (partial list):
-Entities: minecraft:health, minecraft:movement, minecraft:navigation.walk, minecraft:navigation.fly, minecraft:attack, minecraft:follow_range, minecraft:collision_box, minecraft:physics, minecraft:pushable, minecraft:scale, minecraft:type_family, minecraft:breathable, minecraft:despawn, minecraft:jump.static, minecraft:can_climb
-AI Goals: minecraft:behavior.random_stroll, minecraft:behavior.look_at_player, minecraft:behavior.hurt_by_target, minecraft:behavior.nearest_attackable_target, minecraft:behavior.melee_attack, minecraft:behavior.flee_sun, minecraft:behavior.float, minecraft:behavior.panic
-Items: minecraft:max_stack_size, minecraft:hand_equipped, minecraft:use_duration, minecraft:food, minecraft:seed
-Blocks: minecraft:geometry, minecraft:material_instances, minecraft:collision_box, minecraft:selection_box, minecraft:light_emission, minecraft:flammable
+When RESEARCH CONTEXT is provided:
+- Extract the latest format_version values from it
+- Extract the latest component names and their valid properties
+- Extract the latest script API module versions
+- Extract any schema changes, deprecations, or new features
+- Use these as ABSOLUTE truth — override any memorized knowledge
+- Cite the research in your build output (e.g., "Using format_version X.Y.Z per research")
 
----
+If research context contradicts your training data:
+- TRUST THE RESEARCH CONTEXT. It is more recent.
 
-MOD CREATION TERMINAL MODE:
+═══════════════════════════════════════════════════════════
+ VERSION AWARENESS
+═══════════════════════════════════════════════════════════
 
-When user requests mod/addon creation, switch into live terminal compiler mode.
+- If the user specifies a target version, build for THAT version exactly.
+- If no version is specified, use the LATEST version found in research context.
+- ALWAYS state the target version in your build output.
+- If research mentions a version is deprecated, warn the user.
 
-TERMINAL BEHAVIOR (simulate real compilation):
-- Output build stages one at a time — NOT all at once
-- Each message = one stage of the build process
-- Show dynamic processing messages before each file
-- Generate files ONE BY ONE with build context
-- After each file: confirm generation and continue
+═══════════════════════════════════════════════════════════
+ BEHAVIOR PACK ACCURACY
+═══════════════════════════════════════════════════════════
 
-STAGE FLOW (adapt dynamically to the mod):
-Stage 1: Parse requirements, plan structure
-Stage 2: Generate manifest files (behavior + resource)
-Stage 3: Generate entity/item/block definitions
-Stage 4: Generate resource pack components
-Stage 5: Generate scripts if needed
-Stage 6: Finalize and signal download ready
+manifest.json MUST include:
+- "format_version" — from research, never assumed
+- "header": { "name", "description", "uuid" (unique v4), "version" [semver array], "min_engine_version" }
+- "modules": [{ "type": "data"|"script"|"resources", "uuid" (different from header), "version" [semver] }]
+- If scripts: "dependencies" referencing @minecraft/server with EXACT version from research
 
-FILE FORMAT (exact format required):
-\`\`\`
+Entity definitions MUST:
+- Use format_version from research
+- Use only components verified in research
+- Include "minecraft:entity" wrapper with "description" containing "identifier" (namespace:name)
+- Have "component_groups", "events", and at minimum a "minecraft:physics" component
+
+Item definitions MUST:
+- Use format_version from research
+- Follow the exact item schema from bedrock-samples
+- Use valid "minecraft:item" wrapper
+
+Block definitions MUST:
+- Use format_version from research
+- Follow the exact block schema
+- Use valid "minecraft:block" wrapper
+
+═══════════════════════════════════════════════════════════
+ RESOURCE PACK ACCURACY
+═══════════════════════════════════════════════════════════
+
+manifest.json: Same rules as behavior pack but "type": "resources" in modules.
+Entity client definition: Must match behavior pack entity identifier exactly.
+Textures: Reference valid texture paths. If no texture can be provided, note it clearly.
+
+═══════════════════════════════════════════════════════════
+ SCRIPT API ACCURACY
+═══════════════════════════════════════════════════════════
+
+- ONLY use @minecraft/server methods that exist in the researched version
+- ONLY use @minecraft/server-ui if research confirms its availability and version
+- Import via: import { world, system } from "@minecraft/server";
+- NEVER use deprecated or removed APIs
+- Script module version in manifest MUST match research
+
+═══════════════════════════════════════════════════════════
+ TERMINAL BUILD MODE
+═══════════════════════════════════════════════════════════
+
+When building a mod, output like a live compiler. Each message = one stage.
+
+STAGES (adapt dynamically):
+1. Parse requirements → state what was detected
+2. Show target version (from research or user)
+3. Plan behavior pack structure
+4. Plan resource pack structure
+5. Generate files ONE BY ONE using this exact format:
+
 FILE: behavior_packs/ModName/manifest.json
 CONTENT:
-{valid json here}
-\`\`\`
-[FILE_COMPLETE: filename]
+{ ... valid JSON ... }
 
-After ALL files are done, output exactly:
-[BUILD_COMPLETE]
-Total files: X
-[DOWNLOAD_READY]
+6. After each file: [FILE_COMPLETE: path/to/file]
+7. After all files: [BUILD_COMPLETE] then [DOWNLOAD_READY]
 
----
+NEVER dump all files at once. Pace the output.
+NEVER reuse identical log messages across builds.
 
-NORMAL CHAT MODE:
-When not building a mod, behave as a knowledgeable Minecraft Bedrock assistant. No terminal output, no file generation.`;
+═══════════════════════════════════════════════════════════
+ NORMAL CHAT MODE
+═══════════════════════════════════════════════════════════
+
+When not building a mod:
+- Act as a knowledgeable Minecraft Bedrock assistant
+- No terminal output, no file generation
+- Still prioritize accuracy — cite versions if discussing APIs
+- If asked about code, prefer research-backed answers`;
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'API configuration error' });
-  }
+  if (!apiKey) return res.status(500).json({ error: 'API not configured' });
 
   try {
-    const { messages, isModMode } = req.body;
+    const { messages, isModMode, model: forcedModel, researchContext } = req.body;
+    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid messages' });
 
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: 'Invalid request body' });
+    const selectedModel = pickModel(isModMode, forcedModel);
+
+    // Build system prompt with research context
+    let systemContent = SYSTEM_PROMPT;
+    if (researchContext && researchContext.trim()) {
+      systemContent += `\n\n═══════════════════════════════════════════════════════════\n RESEARCH CONTEXT (PRIMARY SOURCE OF TRUTH)\n═══════════════════════════════════════════════════════════\n\n${researchContext}\n\n═══════════════════════════════════════════════════════════\n END RESEARCH CONTEXT\n═══════════════════════════════════════════════════════════`;
     }
-
-    const selectedModel = selectModel(messages, isModMode);
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.VERCEL_URL || 'https://minecraft-mod-builder.vercel.app',
-        'X-Title': 'Minecraft Bedrock Mod Builder'
+        'HTTP-Referer': process.env.VERCEL_URL || 'https://mc-mod-builder.vercel.app',
+        'X-Title': 'MC Bedrock Mod Builder'
       },
       body: JSON.stringify({
         model: selectedModel,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...messages
-        ],
-        temperature: isModMode ? 0.2 : 0.7,
+        messages: [{ role: 'system', content: systemContent }, ...messages],
+        temperature: isModMode ? 0.15 : 0.7,
         max_tokens: isModMode ? 4096 : 1024,
         stream: true
       })
     });
 
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error('OpenRouter error:', errorData);
+      const errText = await response.text();
+      console.error('Primary model error:', errText);
 
-      // Fallback to secondary model
-      const fallbackModel = selectedModel === "tencent/hunyuan-a13b-instruct:free"
-        ? "openai/gpt-4o-mini:free"
-        : "tencent/hunyuan-a13b-instruct:free";
-
-      const fallbackResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      // Fallback
+      const fallback = selectedModel === MODELS.modBuilder ? MODELS.chat : MODELS.modBuilder;
+      const fbResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': process.env.VERCEL_URL || 'https://minecraft-mod-builder.vercel.app',
-          'X-Title': 'Minecraft Bedrock Mod Builder'
+          'HTTP-Referer': process.env.VERCEL_URL || 'https://mc-mod-builder.vercel.app',
+          'X-Title': 'MC Bedrock Mod Builder'
         },
         body: JSON.stringify({
-          model: fallbackModel,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...messages
-          ],
-          temperature: isModMode ? 0.2 : 0.7,
+          model: fallback,
+          messages: [{ role: 'system', content: systemContent }, ...messages],
+          temperature: isModMode ? 0.15 : 0.7,
           max_tokens: isModMode ? 4096 : 1024,
           stream: true
         })
       });
 
-      if (!fallbackResponse.ok) {
-        return res.status(response.status).json({ error: 'AI service unavailable' });
-      }
+      if (!fbResp.ok) return res.status(response.status).json({ error: 'AI service unavailable' });
 
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Model-Used', fallbackModel);
-
-      fallbackResponse.body.pipe(res);
+      res.setHeader('X-Model-Used', fallback);
+      fbResp.body.pipe(res);
       return;
     }
 
@@ -173,13 +206,10 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Model-Used', selectedModel);
-
     response.body.pipe(res);
 
   } catch (error) {
     console.error('Handler error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Internal server error' });
-    }
+    if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
   }
 }
