@@ -8,258 +8,168 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg0:#090d12;--bg1:#0e1520;--bg2:#151e2e;--bg3:#1b2640;
-  --bgc:#111a28;--bgi:#0b1018;
-  --g:#00e676;--b:#00b0ff;--p:#bb86fc;--r:#ff1744;--y:#ffd740;
-  --t1:#e6edf8;--t2:#8a9dba;--t3:#4a5d78;
-  --bd:#1a2c48;--bd2:#254068;
+  --bg0:#080c11;--bg1:#0d1520;--bg2:#141e2e;--bg3:#1a2640;
+  --bgc:#101828;--bgi:#090e18;
+  --g:#00e676;--b:#00b4ff;--p:#b388ff;--r:#ff3d57;--y:#ffd740;--dim:#00e67622;
+  --t1:#dde8f8;--t2:#7a94b8;--t3:#3a5070;
+  --bd:#182840;--bd2:#223860;
   --tg:#00ff41;--tc:#00e5ff;--ta:#ffb300;
-  --r1:6px;--r2:12px;--r3:20px;
-  --mono:'Courier New',monospace;
-  --ui:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --r1:5px;--r2:10px;--r3:18px;
+  --mono:'Courier New',Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 }
 html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--t1);font-family:var(--ui);-webkit-font-smoothing:antialiased}
 #app{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
 
-/* ── HEADER ── */
-#hdr{height:52px;min-height:52px;background:var(--bg1);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 10px;gap:8px;flex-shrink:0;z-index:50}
-#ham{width:44px;height:44px;flex-shrink:0;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r1);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:border-color .15s}
+/* HEADER */
+#hdr{height:50px;min-height:50px;background:var(--bg1);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 10px;gap:8px;flex-shrink:0;z-index:50}
+#ham{width:40px;height:40px;flex-shrink:0;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r1);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 #ham:active{border-color:var(--g);background:var(--bg3)}
 #ham svg{display:block;pointer-events:none}
 .lr{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
-.li{width:30px;height:30px;flex-shrink:0;background:linear-gradient(135deg,var(--g),var(--b));border-radius:var(--r1);display:flex;align-items:center;justify-content:center;font-size:14px}
-.lt b{font-size:12px;color:var(--g);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.3px}
-.lt span{font-size:9px;color:var(--t3);font-family:var(--mono)}
-#pill{display:flex;align-items:center;gap:4px;background:var(--bg2);border:1px solid var(--bd);border-radius:14px;padding:3px 8px;font-size:9px;color:var(--t2);flex-shrink:0;white-space:nowrap}
+.li{width:28px;height:28px;flex-shrink:0;background:linear-gradient(135deg,var(--g),var(--b));border-radius:var(--r1);display:flex;align-items:center;justify-content:center}
+.li svg{display:block}
+.lt b{font-size:11px;color:var(--g);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.5px;font-family:var(--mono)}
+.lt span{font-size:8px;color:var(--t3);font-family:var(--mono)}
+#pill{display:flex;align-items:center;gap:4px;background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:3px 8px;font-size:8px;color:var(--t2);flex-shrink:0;white-space:nowrap;font-family:var(--mono)}
 .pd{width:5px;height:5px;border-radius:50%;background:var(--g);flex-shrink:0}
 .pd.on{animation:blink 2s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
 
-/* ── OVERLAY ── */
-#ov{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.75);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .25s}
+/* OVERLAY */
+#ov{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.8);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .2s}
 #ov.on{opacity:1;pointer-events:all}
 
-/* ── SIDEBAR ── */
-#sb{position:fixed;top:0;left:0;bottom:0;width:min(290px,80vw);background:var(--bg1);border-right:1px solid var(--bd);z-index:201;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+/* SIDEBAR */
+#sb{position:fixed;top:0;left:0;bottom:0;width:min(280px,78vw);background:var(--bg1);border-right:1px solid var(--bd);z-index:201;transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
 #sb.on{transform:translateX(0)}
-.sh{padding:14px 12px 10px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;min-height:48px}
-.sh b{font-size:13px;color:var(--g)}
-#sx{width:36px;height:36px;flex-shrink:0;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r1);color:var(--t2);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.sh{padding:12px 12px 10px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;min-height:46px}
+.sh b{font-size:12px;color:var(--g);font-family:var(--mono)}
+#sx{width:32px;height:32px;flex-shrink:0;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r1);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 #sx:active{border-color:var(--r);color:var(--r)}
-.sbb{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+#sx svg{display:block;pointer-events:none}
+.sbb{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
 .sg{background:var(--bgc);border:1px solid var(--bd);border-radius:var(--r2);overflow:hidden}
-.sgt{padding:7px 10px;font-size:8px;font-weight:700;letter-spacing:1px;color:var(--t3);text-transform:uppercase;background:var(--bg2);border-bottom:1px solid var(--bd)}
-.si{padding:9px 10px;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:6px}
+.sgt{padding:6px 10px;font-size:7px;font-weight:700;letter-spacing:1.2px;color:var(--t3);text-transform:uppercase;background:var(--bg2);border-bottom:1px solid var(--bd);font-family:var(--mono)}
+.si{padding:9px 10px;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:5px}
 .si:last-child{border-bottom:none}
 .sl{font-size:10px;color:var(--t2)}
-select{width:100%;background:var(--bgi);border:1px solid var(--bd);border-radius:var(--r1);color:var(--t1);font-size:10px;padding:7px 8px;outline:none;font-family:var(--mono);-webkit-appearance:none;appearance:none}
+select{width:100%;background:var(--bgi);border:1px solid var(--bd);border-radius:var(--r1);color:var(--t1);font-size:10px;padding:6px 8px;outline:none;font-family:var(--mono);-webkit-appearance:none;appearance:none}
 select:focus{border-color:var(--b)}
 .tr{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.tgl{width:44px;height:26px;flex-shrink:0;background:var(--bgi);border:1px solid var(--bd);border-radius:13px;position:relative;cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.tgl{width:40px;height:22px;flex-shrink:0;background:var(--bgi);border:1px solid var(--bd);border-radius:11px;position:relative;cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .tgl.on{background:var(--g);border-color:var(--g)}
-.tgl::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s}
+.tgl::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .tgl.on::after{transform:translateX(18px)}
-.bdg{display:inline-block;background:rgba(0,176,255,.08);border:1px solid rgba(0,176,255,.2);border-radius:3px;padding:2px 5px;font-size:8px;color:var(--b);font-family:var(--mono)}
-.sf{padding:8px 12px;border-top:1px solid var(--bd);flex-shrink:0;font-size:8px;color:var(--t3);font-family:var(--mono);text-align:center;line-height:1.6}
-.cbt{width:100%;padding:8px;background:rgba(255,23,68,.06);border:1px solid rgba(255,23,68,.2);border-radius:var(--r1);color:var(--r);font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.cbt:active{background:rgba(255,23,68,.15)}
+.bdg{display:inline-flex;align-items:center;gap:4px;background:rgba(0,180,255,.08);border:1px solid rgba(0,180,255,.2);border-radius:3px;padding:2px 6px;font-size:8px;color:var(--b);font-family:var(--mono)}
+.sf{padding:8px 12px;border-top:1px solid var(--bd);flex-shrink:0;font-size:8px;color:var(--t3);font-family:var(--mono);text-align:center;line-height:1.7}
+.cbt{width:100%;padding:8px;background:rgba(255,61,87,.06);border:1px solid rgba(255,61,87,.2);border-radius:var(--r1);color:var(--r);font-size:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;font-family:var(--mono);display:flex;align-items:center;justify-content:center;gap:6px}
+.cbt:active{background:rgba(255,61,87,.15)}
+.cbt svg{flex-shrink:0}
 
-/* ── CHAT ── */
+/* CHAT */
 #chat{flex:1;overflow-y:auto;padding:12px 10px;display:flex;flex-direction:column;gap:10px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 
-/* ── EMPTY STATE ── */
-#empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:24px 16px;gap:10px;text-align:center}
-.ei{width:60px;height:60px;background:linear-gradient(135deg,var(--g),var(--b));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 0 28px rgba(0,230,118,.2);animation:fl 3.5s ease-in-out infinite}
+/* EMPTY */
+#empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:24px 16px;gap:12px;text-align:center}
+.ei{width:56px;height:56px;background:linear-gradient(135deg,var(--g),var(--b));border-radius:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 28px rgba(0,230,118,.2);animation:fl 3.5s ease-in-out infinite}
+.ei svg{display:block}
 @keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-.et{font-size:16px;font-weight:800;background:linear-gradient(90deg,var(--g),var(--b));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.et{font-size:15px;font-weight:800;background:linear-gradient(90deg,var(--g),var(--b));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-family:var(--mono)}
 .es{font-size:11px;color:var(--t3);line-height:1.5;max-width:220px}
 
-/* ── MESSAGES ── */
-.msg{display:flex;flex-direction:column;gap:2px;animation:mi .2s ease-out}
-@keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+/* MESSAGES */
+.msg{display:flex;flex-direction:column;gap:2px;animation:mi .18s ease-out}
+@keyframes mi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .msg.u{align-items:flex-end}
 .msg.a{align-items:flex-start}
-.mm{font-size:8px;color:var(--t3);padding:0 4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-.mtag{background:rgba(187,134,252,.1);border:1px solid rgba(187,134,252,.18);color:var(--p);border-radius:3px;padding:0 3px;font-size:7px;font-family:var(--mono)}
+.mm{font-size:8px;color:var(--t3);padding:0 3px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-family:var(--mono)}
+.mtag{background:rgba(179,136,255,.1);border:1px solid rgba(179,136,255,.18);color:var(--p);border-radius:3px;padding:0 3px;font-size:7px;font-family:var(--mono)}
 .bb{max-width:90%;padding:9px 11px;border-radius:var(--r2);font-size:12.5px;line-height:1.55;word-break:break-word}
-.msg.u .bb{background:linear-gradient(135deg,#16305e,#0e2448);border:1px solid #264a82;border-bottom-right-radius:3px}
-.msg.a .bb{background:var(--bgc);border:1px solid var(--bd);border-bottom-left-radius:3px}
+.msg.u .bb{background:linear-gradient(135deg,#14305a,#0c2448);border:1px solid #244880;border-bottom-right-radius:2px}
+.msg.a .bb{background:var(--bgc);border:1px solid var(--bd);border-bottom-left-radius:2px}
 
-/* ── TERMINAL ── */
+/* TERMINAL */
 .msg.a.tm{align-items:stretch}
-.msg.a.tm .bb{
-  background:#050a0e;
-  border:1px solid #0a3020;
-  font-family:var(--mono);
-  font-size:11px;
-  max-width:100%;width:100%;
-  padding:12px;
-  box-shadow:0 0 16px rgba(0,255,65,.05);
-  border-radius:var(--r2);
-  border-bottom-left-radius:3px;
-  overflow-x:hidden;
-}
-/* Each terminal line */
-.tl{
-  display:block;
-  line-height:1.65;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  max-width:100%;
-  padding:0 2px;
-  font-size:11px;
-}
-/* Line colours */
-.c-g{color:var(--tg)}
-.c-c{color:var(--tc)}
-.c-a{color:var(--ta)}
-.c-r{color:var(--r)}
-.c-gr{color:var(--g)}
-.c-d{color:#1a3525}
-.c-w{color:var(--t2)}
-.c-p{color:var(--p)}
-/* Special line badges */
-.c-sr{color:var(--tc);background:rgba(0,229,255,.06);padding:0 5px;border-radius:3px}
-.c-vl{color:var(--b);background:rgba(0,176,255,.06);padding:0 5px;border-radius:3px}
-.c-cr{color:var(--ta);background:rgba(255,179,0,.06);padding:0 5px;border-radius:3px}
-.c-si{color:var(--g);background:rgba(0,230,118,.06);padding:0 5px;border-radius:3px}
+.msg.a.tm .bb{background:#04080e;border:1px solid #0a2818;font-family:var(--mono);font-size:11px;max-width:100%;width:100%;padding:10px;border-radius:var(--r2);border-bottom-left-radius:2px;overflow-x:hidden}
+.tl{display:block;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-size:11px;margin:0}
+/* terminal line colours */
+.cg{color:var(--tg)}   /* main progress */
+.cc{color:var(--tc)}   /* sub info / cyan */
+.ca{color:var(--ta)}   /* warning / amber */
+.cr{color:var(--r)}    /* error */
+.cgr{color:var(--g)}   /* success / green */
+.cd{color:#1a3020}     /* dim separator */
+.cw{color:var(--t2)}   /* muted default */
+.cp{color:var(--p)}    /* purple accent */
+/* badge lines */
+.csr{color:var(--tc);background:rgba(0,229,255,.05);padding:0 4px;border-radius:2px;display:inline-block}
+.cvl{color:var(--b);background:rgba(0,180,255,.05);padding:0 4px;border-radius:2px;display:inline-block}
+.ccr2{color:var(--ta);background:rgba(255,179,0,.05);padding:0 4px;border-radius:2px;display:inline-block}
+.csi{color:var(--g);background:rgba(0,230,118,.05);padding:0 4px;border-radius:2px;display:inline-block}
+.cfx{color:var(--r);background:rgba(255,61,87,.05);padding:0 4px;border-radius:2px;display:inline-block}
 
-/* ── NEED INFO BLOCK ── */
-.ni-box{margin:6px 0;padding:10px 12px;background:#0a1a2a;border:1px solid #1a3a5a;border-radius:var(--r1);color:var(--b);font-size:11.5px;line-height:1.6;font-family:var(--ui)}
-.ni-box .ni-q{color:var(--t1);margin-top:4px}
+/* NEED INFO BOX */
+.ni-box{margin:6px 0;padding:10px 12px;background:#08182a;border:1px solid #1a3a5a;border-radius:var(--r1);color:var(--b);font-size:11px;line-height:1.65;font-family:var(--ui)}
+.ni-q{color:var(--t1);margin-top:3px;font-size:11px}
 
-/* ── FILE BLOCK ── */
-.fb{margin:6px 0;border:1px solid #0d3322;border-radius:var(--r1);overflow:hidden;background:#040c07}
-.fh{padding:5px 8px;background:#081a0e;border-bottom:1px solid #0d3322;display:flex;align-items:center;gap:6px}
+/* FILE BLOCK */
+.fb{margin:5px 0;border:1px solid #0c2e1a;border-radius:var(--r1);overflow:hidden;background:#030a06}
+.fh{padding:4px 8px;background:#071408;border-bottom:1px solid #0c2e1a;display:flex;align-items:center;gap:6px}
 .fp{font-family:var(--mono);font-size:9px;color:var(--ta);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fl{font-size:7px;color:var(--t3);background:var(--bg2);padding:1px 4px;border-radius:2px;flex-shrink:0}
-.fc{padding:8px;overflow-x:auto;font-family:var(--mono);font-size:10px;color:#b2dfdb;white-space:pre;max-height:260px;overflow-y:auto;line-height:1.5}
-.ff{padding:3px 8px;background:#081a0e;border-top:1px solid #0d3322;font-size:8px;color:var(--g);display:flex;align-items:center;gap:4px}
+.fl{font-size:7px;color:var(--t3);background:var(--bg2);padding:1px 4px;border-radius:2px;flex-shrink:0;font-family:var(--mono)}
+.fc{padding:8px;overflow-x:auto;font-family:var(--mono);font-size:10px;color:#a8d5cc;white-space:pre;max-height:280px;overflow-y:auto;line-height:1.5}
+.ff{padding:3px 8px;background:#071408;border-top:1px solid #0c2e1a;font-size:8px;color:var(--g);display:flex;align-items:center;gap:4px;font-family:var(--mono)}
+.ff svg{flex-shrink:0}
 
-/* ── DOWNLOAD ── */
-.dl{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:13px;margin-top:10px;background:linear-gradient(135deg,#004d28,#006630);border:1px solid var(--g);border-radius:var(--r2);color:var(--g);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--mono);box-shadow:0 0 20px rgba(0,230,118,.2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:transform .15s}
+/* DOWNLOAD */
+.dl{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;margin-top:8px;background:linear-gradient(135deg,#003d20,#005528);border:1px solid var(--g);border-radius:var(--r2);color:var(--g);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--mono);box-shadow:0 0 18px rgba(0,230,118,.15);-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:transform .12s;letter-spacing:.3px}
+.dl svg{flex-shrink:0}
 .dl:active{transform:scale(.97)}
 .dl:disabled{opacity:.4;cursor:not-allowed;transform:none}
 
-/* ── MARKDOWN (chat mode) ── */
+/* CHAT MARKDOWN */
 .bb p{margin:0 0 5px}.bb p:last-child{margin:0}
 .bb code{background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:3px;padding:1px 4px;font-family:var(--mono);font-size:10px;color:var(--b)}
 .bb pre{background:#050a0e;border:1px solid var(--bd);border-radius:var(--r1);padding:8px;overflow-x:auto;margin:4px 0}
 .bb pre code{background:none;border:none;padding:0;color:var(--tg);font-size:10px}
 .bb strong{color:var(--y)}.bb ul,.bb ol{padding-left:14px;margin:3px 0}.bb li{margin:1px 0;font-size:11px}
 
-/* ── TYPING ── */
+/* TYPING */
 .typ{display:flex;align-items:center;gap:4px;padding:4px 2px}
 .dot{width:5px;height:5px;background:var(--g);border-radius:50%;animation:tp 1.2s ease-in-out infinite}
 .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
 @keyframes tp{0%,100%{transform:scale(.5);opacity:.3}50%{transform:scale(1);opacity:1}}
-.cur{display:inline-block;width:6px;height:12px;background:var(--tg);animation:bk .8s step-end infinite;vertical-align:middle;margin-left:1px}
+.cur{display:inline-block;width:6px;height:11px;background:var(--tg);animation:bk .8s step-end infinite;vertical-align:middle;margin-left:1px}
 @keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
 
-/* ── INPUT AREA ── */
-#inp{
-  background:var(--bg1);
-  border-top:1px solid var(--bd);
-  padding:8px 10px;
-  flex-shrink:0;
-  padding-bottom:max(8px,env(safe-area-inset-bottom));
-  /* CRITICAL: always on top, never blocked */
-  position:relative;
-  z-index:10;
-}
-
-/* Toolbar */
-.itb{display:flex;align-items:center;gap:6px;margin-bottom:7px;flex-wrap:nowrap;overflow:hidden}
-
-#nm{
-  display:flex;align-items:center;gap:4px;
-  padding:5px 11px;min-height:32px;
-  background:linear-gradient(135deg,rgba(0,80,40,.4),rgba(0,100,50,.4));
-  border:1px solid rgba(0,230,118,.3);border-radius:16px;
-  color:var(--g);font-size:10px;font-weight:600;
-  cursor:pointer;white-space:nowrap;
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
-  flex-shrink:0;
-}
-#nm:active{transform:scale(.96)}
-
-/* Stop button */
-#stop-btn{
-  display:none;
-  align-items:center;gap:4px;
-  padding:5px 11px;min-height:32px;
-  background:rgba(255,23,68,.1);
-  border:1px solid rgba(255,23,68,.4);border-radius:16px;
-  color:var(--r);font-size:10px;font-weight:600;
-  cursor:pointer;white-space:nowrap;
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
-  flex-shrink:0;
-}
+/* INPUT */
+#inp{background:var(--bg1);border-top:1px solid var(--bd);padding:8px 10px;flex-shrink:0;padding-bottom:max(8px,env(safe-area-inset-bottom));position:relative;z-index:10}
+.itb{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:nowrap;overflow:hidden}
+#nm{display:flex;align-items:center;gap:5px;padding:5px 10px;min-height:30px;background:linear-gradient(135deg,rgba(0,80,40,.4),rgba(0,100,50,.4));border:1px solid rgba(0,230,118,.28);border-radius:14px;color:var(--g);font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;font-family:var(--mono)}
+#nm:active{transform:scale(.95)}
+#nm svg{flex-shrink:0}
+#stop-btn{display:none;align-items:center;gap:5px;padding:5px 10px;min-height:30px;background:rgba(255,61,87,.1);border:1px solid rgba(255,61,87,.35);border-radius:14px;color:var(--r);font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;font-family:var(--mono)}
 #stop-btn.vis{display:flex}
-#stop-btn:active{transform:scale(.96)}
-
+#stop-btn:active{transform:scale(.95)}
+#stop-btn svg{flex-shrink:0}
 #mi2{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:8px;color:var(--t3);font-family:var(--mono);flex-shrink:0}
 .md2{width:5px;height:5px;border-radius:50%;background:var(--t3);flex-shrink:0}
 .md2.on{background:var(--g);animation:blink 1.4s infinite}
-
-/* Input row */
 .ir{display:flex;gap:6px;align-items:flex-end}
-#iw{
-  flex:1;
-  background:var(--bgi);
-  border:1px solid var(--bd);
-  border-radius:var(--r3);
-  display:flex;align-items:flex-end;
-  padding:5px 10px;gap:6px;
-  min-height:42px;
-  transition:border-color .2s;
-}
+#iw{flex:1;background:var(--bgi);border:1px solid var(--bd);border-radius:var(--r3);display:flex;align-items:flex-end;padding:5px 10px;gap:6px;min-height:40px;transition:border-color .2s}
 #iw:focus-within{border-color:var(--g)}
-
-#tx{
-  flex:1;
-  background:transparent;
-  border:none;outline:none;
-  color:var(--t1);
-  font-size:13px;
-  font-family:var(--ui);
-  resize:none;
-  max-height:96px;
-  line-height:1.45;
-  padding:2px 0;
-  /* CRITICAL: never disabled, never blocked */
-  pointer-events:all !important;
-  opacity:1 !important;
-}
+#tx{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;font-family:var(--ui);resize:none;max-height:96px;line-height:1.45;padding:2px 0;pointer-events:all !important;opacity:1 !important}
 #tx::placeholder{color:var(--t3)}
-
-#go{
-  width:42px;height:42px;flex-shrink:0;
-  background:linear-gradient(135deg,#004d28,#004520);
-  border:1px solid var(--g);border-radius:50%;
-  color:var(--g);cursor:pointer;font-size:16px;
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 0 10px rgba(0,230,118,.12);
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
-  transition:transform .15s;
-}
-#go:active{transform:scale(.93)}
+#go{width:40px;height:40px;flex-shrink:0;background:linear-gradient(135deg,#003d20,#003818);border:1px solid var(--g);border-radius:50%;color:var(--g);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,230,118,.1);-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:transform .12s}
+#go:active{transform:scale(.92)}
 #go:disabled{opacity:.3;cursor:not-allowed;transform:none;box-shadow:none}
+#go svg{display:block;pointer-events:none}
 
-::-webkit-scrollbar{width:3px;height:3px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px}
+::-webkit-scrollbar{width:3px;height:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px}
 
-/* ── TOAST ── */
-#toast{
-  position:fixed;bottom:90px;left:50%;
-  transform:translateX(-50%) translateY(12px);
-  background:var(--bgc);border:1px solid var(--bd);border-radius:var(--r2);
-  padding:8px 14px;font-size:11px;color:var(--t1);
-  opacity:0;transition:all .25s;z-index:500;white-space:nowrap;
-  box-shadow:0 4px 16px rgba(0,0,0,.4);pointer-events:none;
-}
+/* TOAST */
+#toast{position:fixed;bottom:88px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--bgc);border:1px solid var(--bd);border-radius:var(--r2);padding:7px 13px;font-size:11px;color:var(--t1);opacity:0;transition:all .22s;z-index:500;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4);pointer-events:none;font-family:var(--mono)}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast.ok{border-color:var(--g);color:var(--g)}
 #toast.err{border-color:var(--r);color:var(--r)}
@@ -268,78 +178,90 @@ select:focus{border-color:var(--b)}
 <body>
 <div id="app">
 
-<!-- HEADER -->
 <header id="hdr">
   <div id="ham" role="button" tabindex="0" aria-label="Menu">
-    <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
-      <rect width="18" height="2" rx="1" fill="#8a9dba"/>
-      <rect y="5" width="18" height="2" rx="1" fill="#8a9dba"/>
-      <rect y="10" width="18" height="2" rx="1" fill="#8a9dba"/>
-    </svg>
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="#7a94b8"/><rect y="5" width="16" height="2" rx="1" fill="#7a94b8"/><rect y="10" width="16" height="2" rx="1" fill="#7a94b8"/></svg>
   </div>
   <div class="lr">
-    <div class="li">⛏️</div>
-    <div class="lt"><b>MC MOD BUILDER</b><span>Bedrock AI</span></div>
+    <div class="li">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 2L4 13h7l-1 9 10-11h-7l1-9z" fill="#080c11" stroke="#080c11" stroke-width="1"/><path d="M14 2L4 13h7l-1 9 10-11h-7l1-9z" fill="white" opacity=".9"/></svg>
+    </div>
+    <div class="lt"><b>MC MOD BUILDER</b><span>Bedrock Edition AI</span></div>
   </div>
   <div id="pill"><div class="pd on" id="pd"></div><span id="pt">ready</span></div>
 </header>
 
-<!-- SIDEBAR OVERLAY -->
 <div id="ov"></div>
 
-<!-- SIDEBAR -->
 <aside id="sb">
-  <div class="sh"><b>⚙️ Settings</b><div id="sx" role="button" tabindex="0">✕</div></div>
+  <div class="sh"><b>SETTINGS</b>
+    <div id="sx" role="button" tabindex="0">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="#7a94b8" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+  </div>
   <div class="sbb">
     <div class="sg">
-      <div class="sgt">🤖 AI Model</div>
-      <div class="si"><div class="sl">Model</div><div class="bdg">🧠 GPT-OSS 120B</div></div>
-      <div class="si"><div class="sl" style="font-size:9px;line-height:1.5;color:var(--t3);font-family:var(--mono)">Single model. Continuous reference checking and validation during builds.</div></div>
+      <div class="sgt">AI MODEL</div>
+      <div class="si"><div class="sl">Model</div><div class="bdg"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><circle cx="4" cy="4" r="3" fill="#00b4ff" opacity=".8"/></svg>GPT-OSS 120B</div></div>
+      <div class="si"><div class="sl" style="font-size:9px;line-height:1.5;color:var(--t3)">Continuous search and validation during builds. All outputs verified before finalization.</div></div>
     </div>
     <div class="sg">
-      <div class="sgt">🔨 Build</div>
+      <div class="sgt">BUILD</div>
       <div class="si"><div class="tr"><div class="sl">Terminal UI</div><div class="tgl on" id="tg-t"></div></div></div>
-      <div class="si"><div class="tr"><div class="sl">Auto-package ZIP</div><div class="tgl on" id="tg-z"></div></div></div>
+      <div class="si"><div class="tr"><div class="sl">Auto-download ZIP</div><div class="tgl" id="tg-z"></div></div></div>
     </div>
     <div class="sg">
-      <div class="sgt">🎨 Display</div>
+      <div class="sgt">DISPLAY</div>
       <div class="si"><div class="sl">Font Size</div>
         <select id="fsel">
-          <option value="10">Small</option>
-          <option value="12" selected>Normal</option>
-          <option value="14">Large</option>
+          <option value="10">Small (10px)</option>
+          <option value="11" selected>Normal (11px)</option>
+          <option value="13">Large (13px)</option>
         </select>
       </div>
     </div>
     <div class="sg">
-      <div class="sgt">💾 Session</div>
-      <div class="si"><button class="cbt" id="clr">🗑️ Clear Conversation</button></div>
+      <div class="sgt">SESSION</div>
+      <div class="si">
+        <button class="cbt" id="clr">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Clear Conversation
+        </button>
+      </div>
     </div>
   </div>
-  <div class="sf">MC Bedrock Mod Builder v4.0<br>GPT-OSS 120B · Continuous Validation</div>
+  <div class="sf">MC Bedrock Mod Builder v4.0<br>GPT-OSS 120B · Verified Outputs · 2026</div>
 </aside>
 
-<!-- CHAT -->
 <main id="chat">
   <div id="empty">
-    <div class="ei">⛏️</div>
-    <div class="et">Bedrock Mod Builder</div>
-    <div class="es">Describe a mod. The AI will validate and build it step by step.</div>
+    <div class="ei">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="8" height="8" rx="1" fill="white" opacity=".9"/><rect x="14" y="2" width="8" height="8" rx="1" fill="white" opacity=".6"/><rect x="2" y="14" width="8" height="8" rx="1" fill="white" opacity=".6"/><rect x="14" y="14" width="8" height="8" rx="1" fill="white" opacity=".3"/></svg>
+    </div>
+    <div class="et">BEDROCK MOD BUILDER</div>
+    <div class="es">Describe a mod. The AI searches, verifies, and builds working Bedrock addons.</div>
   </div>
 </main>
 
-<!-- INPUT -->
 <div id="inp">
   <div class="itb">
-    <div id="nm" role="button" tabindex="0">✦ New Mod</div>
-    <div id="stop-btn" role="button" tabindex="0">⏹ Stop</div>
+    <div id="nm" role="button" tabindex="0">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      New Mod
+    </div>
+    <div id="stop-btn" role="button" tabindex="0">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
+      Stop
+    </div>
     <div id="mi2"><div class="md2" id="md2"></div><span id="ml2">chat</span></div>
   </div>
   <div class="ir">
     <div id="iw">
-      <textarea id="tx" placeholder="Ask anything or describe a mod..." rows="1" maxlength="2000"></textarea>
+      <textarea id="tx" placeholder="Ask anything or describe a mod to build..." rows="1" maxlength="2000"></textarea>
     </div>
-    <button id="go" aria-label="Send">➤</button>
+    <button id="go" aria-label="Send">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
   </div>
 </div>
 
@@ -347,60 +269,49 @@ select:focus{border-color:var(--b)}
 </div>
 
 <script>
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    STATE
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 const S = {
   msg: [],
   files: {},
   building: false,
   done: false,
   streaming: false,
-  abortCtrl: null,           // AbortController for stopping
-  cfg: { termUI: true, autoZip: true, fs: 12 }
+  abortCtrl: null,
+  cfg: { termUI: true, autoZip: false, fs: 11 }
 };
 
-/* ════════════════════════════════════════════════════════
-   DOM
-════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   DOM REFS
+══════════════════════════════════════════════════════════ */
 const $ = id => document.getElementById(id);
-const chat    = $('chat');
-const tx      = $('tx');
-const goBtn   = $('go');
-const stopBtn = $('stop-btn');
-const pd      = $('pd');
-const pt      = $('pt');
-const md2     = $('md2');
-const ml2     = $('ml2');
-const empty   = $('empty');
-const toast   = $('toast');
+const chat = $('chat'), tx = $('tx'), goBtn = $('go'), stopBtn = $('stop-btn'),
+      pd = $('pd'), pt = $('pt'), md2 = $('md2'), ml2 = $('ml2'),
+      empty = $('empty'), toast = $('toast');
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    SIDEBAR
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function openSB() { $('sb').classList.add('on'); $('ov').classList.add('on'); }
 function closeSB() { $('sb').classList.remove('on'); $('ov').classList.remove('on'); }
 
 let _tf = false;
-$('ham').addEventListener('touchend', e => {
-  e.preventDefault(); _tf = true; openSB(); setTimeout(() => _tf = false, 400);
-}, { passive: false });
+$('ham').addEventListener('touchend', e => { e.preventDefault(); _tf = true; openSB(); setTimeout(() => _tf = false, 400); }, { passive: false });
 $('ham').addEventListener('click', () => { if (!_tf) openSB(); });
 $('ham').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSB(); } });
 $('sx').addEventListener('click', closeSB);
 $('sx').addEventListener('touchend', e => { e.preventDefault(); closeSB(); }, { passive: false });
 $('ov').addEventListener('click', closeSB);
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    SETTINGS
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function loadCfg() {
-  try { const s = localStorage.getItem('mcb7'); if (s) Object.assign(S.cfg, JSON.parse(s)); } catch (e) {}
+  try { const s = localStorage.getItem('mcb8'); if (s) Object.assign(S.cfg, JSON.parse(s)); } catch (e) {}
   applyCfg();
 }
-function saveCfg() {
-  try { localStorage.setItem('mcb7', JSON.stringify(S.cfg)); } catch (e) {}
-}
+function saveCfg() { try { localStorage.setItem('mcb8', JSON.stringify(S.cfg)); } catch (e) {} }
 function applyCfg() {
   $('fsel').value = String(S.cfg.fs);
   $('tg-t').classList.toggle('on', !!S.cfg.termUI);
@@ -412,80 +323,66 @@ $('tg-t').addEventListener('click', function () { this.classList.toggle('on'); S
 $('tg-z').addEventListener('click', function () { this.classList.toggle('on'); S.cfg.autoZip = this.classList.contains('on'); saveCfg(); });
 $('clr').addEventListener('click', () => { clearChat(); closeSB(); });
 
-/* ════════════════════════════════════════════════════════
-   NEW MOD BUTTON
-════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   NEW MOD
+══════════════════════════════════════════════════════════ */
 $('nm').addEventListener('click', () => {
-  S.files = {};
-  S.done = false;
-  tx.value = '';
-  tx.placeholder = 'Describe the mod you want to build...';
-  tx.focus();
+  S.files = {}; S.done = false;
+  tx.value = ''; tx.placeholder = 'Describe the mod you want to build...'; tx.focus();
 });
-$('nm').addEventListener('touchend', e => { e.preventDefault(); $('nm').click(); }, { passive: false });
 
-/* ════════════════════════════════════════════════════════
-   STOP BUTTON — interrupt at any time
-════════════════════════════════════════════════════════ */
-function stopGeneration() {
-  if (S.abortCtrl) {
-    S.abortCtrl.abort();
-    S.abortCtrl = null;
-  }
+/* ══════════════════════════════════════════════════════════
+   STOP
+══════════════════════════════════════════════════════════ */
+function stopGen() {
+  if (S.abortCtrl) { S.abortCtrl.abort(); S.abortCtrl = null; }
   setStreaming(false);
   setStatus('stopped', false);
-  showToast('Generation stopped', '');
+  showToast('Generation stopped');
   setTimeout(() => setStatus(S.building ? 'building' : 'ready', true), 2000);
 }
-stopBtn.addEventListener('click', stopGeneration);
-stopBtn.addEventListener('touchend', e => { e.preventDefault(); stopGeneration(); }, { passive: false });
+stopBtn.addEventListener('click', stopGen);
+stopBtn.addEventListener('touchend', e => { e.preventDefault(); stopGen(); }, { passive: false });
 
-/* ════════════════════════════════════════════════════════
-   STREAMING STATE HELPER
-════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   STREAMING STATE
+══════════════════════════════════════════════════════════ */
 function setStreaming(on) {
   S.streaming = on;
   goBtn.disabled = on;
-  // Input NEVER disabled — user can always type
   stopBtn.classList.toggle('vis', on);
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    CLEAR
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function clearChat() {
   if (S.abortCtrl) { S.abortCtrl.abort(); S.abortCtrl = null; }
   S.msg = []; S.files = {}; S.done = false; S.building = false;
-  setStreaming(false);
-  setMode(false);
+  setStreaming(false); setMode(false);
   Array.from(chat.children).forEach(el => { if (el.id !== 'empty') el.remove(); });
   empty.style.display = 'flex';
-  setStatus('ready', true);
-  showToast('Cleared', 'ok');
+  setStatus('ready', true); showToast('Cleared', 'ok');
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    MODE / STATUS
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function setMode(on) {
   S.building = on;
   md2.classList.toggle('on', on);
   ml2.textContent = on ? 'building' : 'chat';
-  tx.placeholder = on ? 'Follow-up or ask anything...' : 'Ask anything or describe a mod...';
+  tx.placeholder = on ? 'Follow-up or ask anything...' : 'Ask anything or describe a mod to build...';
 }
-function setStatus(t, pulse) {
-  pt.textContent = t;
-  pd.classList.toggle('on', pulse);
-}
+function setStatus(t, pulse) { pt.textContent = t; pd.classList.toggle('on', pulse); }
 
-/* ════════════════════════════════════════════════════════
-   INTENT DETECTION
-════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   INTENT
+══════════════════════════════════════════════════════════ */
 async function detectIntent(text) {
   try {
     const r = await fetch('/api/intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text })
     });
     if (!r.ok) return 'chat';
@@ -494,50 +391,45 @@ async function detectIntent(text) {
   } catch (e) { return 'chat'; }
 }
 
-/* ════════════════════════════════════════════════════════
-   INPUT HANDLING
-════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   INPUT HANDLERS
+══════════════════════════════════════════════════════════ */
 tx.addEventListener('input', function () {
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 96) + 'px';
 });
 tx.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    if (!S.streaming) send();
-  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!S.streaming) send(); }
 });
 goBtn.addEventListener('click', () => { if (!S.streaming) send(); });
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    SEND
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 async function send() {
   const text = tx.value.trim();
   if (!text || S.streaming) return;
 
   empty.style.display = 'none';
-  tx.value = '';
-  tx.style.height = 'auto';
-
+  tx.value = ''; tx.style.height = 'auto';
   S.msg.push({ role: 'user', content: text });
   addUsr(text);
-
   setStatus('analyzing...', true);
   setStreaming(true);
 
-  // Intent detection
+  // Detect intent
   const intent = await detectIntent(text);
   const isBuild = intent === 'build';
   const isClarify = intent === 'clarify';
 
+  // Determine if we should use terminal mode
+  // KEY FIX: followup to an existing build also uses terminal
+  const useTerminal = (isBuild || isClarify || S.building) && S.cfg.termUI;
   if (isBuild && !S.building) setMode(true);
-  if (!isBuild && !isClarify && S.building) setMode(false);
+  if (useTerminal && !S.building) setMode(true);
 
   setStatus('processing...', true);
   const typing = addTyping();
-
-  // Create abort controller for this request
   S.abortCtrl = new AbortController();
   const signal = S.abortCtrl.signal;
 
@@ -545,329 +437,224 @@ async function send() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: S.msg, isModMode: isBuild }),
+      body: JSON.stringify({ messages: S.msg, isModMode: useTerminal }),
       signal
     });
-
     typing.remove();
-
-    if (!resp.ok) {
-      const e = await resp.json().catch(() => ({}));
-      throw new Error(e.error || 'HTTP ' + resp.status);
-    }
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error || 'HTTP ' + resp.status); }
 
     const mUsed = resp.headers.get('X-Model-Used') || 'GPT-OSS 120B';
-    const isT = isBuild && S.cfg.termUI;
-    const { bubble: bb } = addAsst(isT, mUsed);
-
-    await streamResponse(resp, bb, isT, signal);
-
+    const { bubble: bb } = addAsst(useTerminal, mUsed);
+    await streamResp(resp, bb, useTerminal, signal);
   } catch (e) {
     typing?.remove();
-    if (e.name === 'AbortError') {
-      // User stopped — already handled by stopGeneration()
-    } else {
-      addErr(e.message);
-      setStatus('error', false);
-      setTimeout(() => setStatus('ready', true), 3000);
-    }
+    if (e.name !== 'AbortError') { addErr(e.message); setStatus('error', false); setTimeout(() => setStatus('ready', true), 3000); }
   } finally {
-    setStreaming(false);
-    S.abortCtrl = null;
+    setStreaming(false); S.abortCtrl = null;
     if (!S.done) setStatus(S.building ? 'building' : 'ready', true);
   }
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    STREAM RESPONSE
-════════════════════════════════════════════════════════ */
-async function streamResponse(resp, bb, isT, signal) {
-  const reader = resp.body.getReader();
-  const dec = new TextDecoder();
-  let full = '';
-  let buf = '';
-
-  const ce = document.createElement('div');
-  bb.appendChild(ce);
-
+══════════════════════════════════════════════════════════ */
+async function streamResp(resp, bb, isT, signal) {
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let full = '', buf = '';
+  const ce = document.createElement('div'); bb.appendChild(ce);
   let cur = null;
-  if (isT) {
-    cur = document.createElement('span');
-    cur.className = 'cur';
-    bb.appendChild(cur);
-  }
-
-  // Handle abort
-  if (signal) {
-    signal.addEventListener('abort', () => { reader.cancel().catch(() => {}); });
-  }
+  if (isT) { cur = document.createElement('span'); cur.className = 'cur'; bb.appendChild(cur); }
+  if (signal) signal.addEventListener('abort', () => { reader.cancel().catch(() => {}); });
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      if (signal?.aborted) break;
-
+      if (done || signal?.aborted) break;
       const raw = dec.decode(value, { stream: true });
       buf += raw;
-
-      const lines = buf.split('\n');
-      buf = lines.pop() || '';
-
+      const lines = buf.split('\n'); buf = lines.pop() || '';
       for (const line of lines) {
-        if (line.startsWith(':')) continue;         // keepalive comments
+        if (line.startsWith(':')) continue;
         if (!line.startsWith('data: ')) continue;
-        const d = line.slice(6).trim();
-        if (d === '[DONE]') continue;
-
+        const d = line.slice(6).trim(); if (d === '[DONE]') continue;
         try {
           const p = JSON.parse(d);
           const delta = p.choices?.[0]?.delta?.content || '';
-          if (delta) {
-            full += delta;
-            isT ? renderTerminal(ce, full) : renderMD(ce, full);
-            scr();
-          }
+          if (delta) { full += delta; isT ? renderTerm(ce, full) : renderMD(ce, full); scr(); }
         } catch (_) {}
       }
     }
-  } finally {
-    cur?.remove();
-  }
+  } finally { cur?.remove(); }
 
-  // Final render
-  isT ? renderTerminal(ce, full, true) : renderMD(ce, full);
-
-  if (isT) {
-    parseFiles(full);
-    if (Object.keys(S.files).length > 0) addDL(bb);
-  }
-
-  if (!signal?.aborted) {
-    S.msg.push({ role: 'assistant', content: full });
-  }
+  isT ? renderTerm(ce, full, true) : renderMD(ce, full);
+  if (isT) { parseFiles(full); if (Object.keys(S.files).length > 0) addDL(bb); }
+  if (!signal?.aborted) S.msg.push({ role: 'assistant', content: full });
   scr();
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    TERMINAL RENDERER
-   — converts AI output into clean per-line terminal display
-════════════════════════════════════════════════════════ */
-function renderTerminal(el, text, fin = false) {
-  const rawLines = text.split('\n');
-  let html = '';
-  let fO = false, cO = false, fP = '', fB = '';
-  let niOpen = false;
-  let niHtml = '';
+══════════════════════════════════════════════════════════ */
+function renderTerm(el, text, fin = false) {
+  const lines = text.split('\n');
+  let html = '', fO = false, cO = false, fP = '', fB = '', niOpen = false, niHtml = '';
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const raw = rawLines[i];
-    const t   = raw.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i], t = raw.trim();
 
-    // ── NEED_INFO block ──
+    // NEED_INFO
     if (t.includes('[NEED_INFO]')) {
       niOpen = true;
-      niHtml = '<div class="ni-box"><strong style="color:var(--b);font-size:11px">⚠ Additional info needed</strong>';
+      niHtml = '<div class="ni-box"><strong style="color:var(--b);font-size:10px;font-family:var(--mono)">INFO NEEDED</strong>';
       const after = t.replace(/.*\[NEED_INFO\]\s*/, '').trim();
-      if (after) niHtml += '<div class="ni-q">• ' + esc(after) + '</div>';
+      if (after) niHtml += '<div class="ni-q">' + esc(after) + '</div>';
       continue;
     }
-    if (t.includes('[/NEED_INFO]')) {
-      niOpen = false;
-      niHtml += '</div>';
-      html += niHtml;
-      niHtml = '';
-      continue;
-    }
-    if (niOpen) {
-      if (t) niHtml += '<div class="ni-q">• ' + esc(t) + '</div>';
-      continue;
-    }
+    if (t.includes('[/NEED_INFO]')) { niOpen = false; niHtml += '</div>'; html += niHtml; niHtml = ''; continue; }
+    if (niOpen) { if (t) niHtml += '<div class="ni-q">- ' + esc(t) + '</div>'; continue; }
 
-    // ── FILE block ──
+    // FILE block
     if (/^FILE:\s*\S/.test(t)) {
       if (fO && fP && cO) html += fBlk(fP, fB.trim(), false);
-      fO = true; cO = false; fP = t.replace(/^FILE:\s*/, '').trim(); fB = '';
-      continue;
+      fO = true; cO = false; fP = t.replace(/^FILE:\s*/, '').trim(); fB = ''; continue;
     }
     if (fO && /^CONTENT:\s*$/.test(t)) { cO = true; continue; }
+
     if (/\[FILE_COMPLETE:/.test(t)) {
-      if (fO && fP) {
-        html += fBlk(fP, fB.trim(), false);
-        html += tLine('✔ Stored: ' + fP, 'c-gr');
-        S.files[fP] = fB.trim();
-      }
-      fO = cO = false; fP = fB = '';
-      continue;
+      if (fO && fP) { html += fBlk(fP, fB.trim(), false); html += tl('OK ' + fP, 'cgr'); S.files[fP] = fB.trim(); }
+      fO = cO = false; fP = fB = ''; continue;
     }
     if (t.includes('[BUILD_COMPLETE]')) {
-      html += tLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'c-d');
-      html += tLine('BUILD COMPLETE ✓', 'c-gr');
-      S.done = true;
-      setStatus('build complete ✓', false);
-      continue;
+      html += tl('================================', 'cd');
+      html += tl('BUILD COMPLETE', 'cgr');
+      S.done = true; setStatus('complete', false); continue;
     }
     if (t.includes('[DOWNLOAD_READY]')) continue;
     if (cO) { fB += raw + '\n'; continue; }
 
-    // ── Search / validate / correct markers ──
-    const srm = t.match(/\[SEARCH:\s*([^\]]+)\]/);
-    if (srm) { html += tLine('⟳ Referencing: ' + srm[1].trim(), 'c-sr'); continue; }
+    // Markers
+    const srm = t.match(/\[SEARCH:\s*([^\]]+)\]/); if (srm) { html += tl('>> SEARCH: ' + srm[1].trim(), 'csr'); continue; }
+    const srr = t.match(/\[SR:\s*([^\]]+)\]/);     if (srr) { html += tl('OK FOUND: ' + srr[1].trim(), 'csi'); continue; }
+    const vl  = t.match(/\[VERIFY:\s*([^\]]+)\]/);  if (vl)  { html += tl('-- VERIFY: ' + vl[1].trim(), 'cvl'); continue; }
+    const fx  = t.match(/\[FIX:\s*([^\]]+)\]/);     if (fx)  { html += tl('!! FIX: ' + fx[1].trim(), 'cfx'); continue; }
+    const cr  = t.match(/\[CORRECTING:\s*([^\]]+)\]/); if (cr) { html += tl('!! CORRECTING: ' + cr[1].trim(), 'ccr2'); continue; }
 
-    const srr = t.match(/\[SR:\s*([^\]]+)\]/);
-    if (srr) { html += tLine('✔ Referenced: ' + srr[1].trim(), 'c-si'); continue; }
-
-    const vlm = t.match(/\[VALIDATING:\s*([^\]]+)\]/);
-    if (vlm) { html += tLine('⟳ Validating: ' + vlm[1].trim(), 'c-vl'); continue; }
-
-    const crm = t.match(/\[CORRECTING:\s*([^\]]+)\]/);
-    if (crm) { html += tLine('⟳ Correcting: ' + crm[1].trim(), 'c-cr'); continue; }
-
-    // ── Regular terminal lines ──
-    if (!t) { html += tLine('', 'c-w'); continue; }
-    html += styleTermLine(raw);
+    if (!t) { html += tl('', 'cw'); continue; }
+    html += classifyLine(raw);
   }
-
-  // Streaming: show partial file
   if (fO && cO && fP && !fin) html += fBlk(fP, fB.trim(), true);
-
   el.innerHTML = html;
 }
 
-/* Classify and colour a terminal line */
-function styleTermLine(raw) {
+function classifyLine(raw) {
   const t = raw.trim();
-  if (!t) return tLine('', 'c-w');
-
-  // Checkmarks
-  if (/^[✔✅]/.test(t)) return tLine(esc(t), 'c-gr');
-  // Warnings
-  if (/^[⚠]/.test(t))   return tLine(esc(t), 'c-a');
-  // Errors
-  if (/^[✗❌]/.test(t)) return tLine(esc(t), 'c-r');
-  // Primary progress (>>>, ==>, >>>)
-  if (/^(>>>|==>|→|↓)/.test(t)) return tLine(esc(t), 'c-g');
-  // Bullet points / list items
-  if (/^[•▶·\-]/.test(t)) return tLine(esc(t), 'c-c');
-  // Separator lines
-  if (/^[━─=]{4,}/.test(t)) return tLine(esc(t), 'c-d');
-  // ALL-CAPS labels like "Detected:", "Target:", "Requires:"
-  if (/^[A-Za-z][A-Za-z\s]{2,}:/.test(t)) return tLine(esc(t), 'c-c');
-  // Default muted
-  return tLine(esc(t), 'c-w');
+  if (/^>>/.test(t))         return tl(esc(t), 'cg');
+  if (/^OK/.test(t)||/^[✔✅]/.test(t)) return tl(esc(t), 'cgr');
+  if (/^!!/.test(t)||/^[⚠]/.test(t))  return tl(esc(t), 'ca');
+  if (/^--/.test(t))         return tl(esc(t), 'cc');
+  if (/^\?\?/.test(t))       return tl(esc(t), 'cp');
+  if (/^[✗❌]/.test(t))     return tl(esc(t), 'cr');
+  if (/^={4,}/.test(t)||/^-{4,}/.test(t)) return tl(esc(t), 'cd');
+  if (/^[A-Za-z][A-Za-z ]+:/.test(t)) return tl(esc(t), 'cc');
+  return tl(esc(t), 'cw');
 }
 
-function tLine(content, cls) {
-  return `<span class="tl ${cls}">${content || '&nbsp;'}</span>\n`;
-}
+function tl(content, cls) { return `<span class="tl ${cls}">${content || '&nbsp;'}</span>\n`; }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    FILE BLOCK
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function fBlk(p, c, streaming) {
-  const ext  = p.split('.').pop().toLowerCase();
-  const lang = { json: 'JSON', js: 'JS', ts: 'TS', lang: 'Lang', txt: 'Text' }[ext] || ext.toUpperCase();
+  const ext = p.split('.').pop().toLowerCase();
+  const lang = { json: 'JSON', js: 'JS', ts: 'TS', lang: 'Lang', txt: 'TXT' }[ext] || ext.toUpperCase();
   const clean = stripMd(c);
-  const hl    = ext === 'json' ? hlJSON(clean) : esc(clean);
+  const hl = ext === 'json' ? hlJSON(clean) : esc(clean);
   const lines = clean.split('\n').length;
-  const sz    = clean.length < 1024 ? clean.length + 'B' : (clean.length / 1024).toFixed(1) + 'KB';
-  return (
-    `<div class="fb">` +
-    `<div class="fh"><span class="fp">📄 ${esc(p)}</span><span class="fl">${lang}</span></div>` +
+  const sz = clean.length < 1024 ? clean.length + 'B' : (clean.length / 1024).toFixed(1) + 'KB';
+  return `<div class="fb"><div class="fh"><span class="fp">` +
+    `<svg width="9" height="9" viewBox="0 0 9 9" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M1 1h4.5L8 3.5V8H1V1z" stroke="#ffb300" stroke-width=".8"/></svg>` +
+    `${esc(p)}</span><span class="fl">${lang}</span></div>` +
     `<div class="fc">${hl}</div>` +
-    (streaming ? '' : `<div class="ff">✔ ${lines} lines · ${sz}</div>`) +
-    `</div>`
-  );
+    (streaming ? '' : `<div class="ff"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4l2 2 4-4" stroke="#00e676" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>${lines} lines · ${sz}</div>`) +
+    `</div>`;
 }
 
 function hlJSON(s) {
   return esc(s)
-    .replace(/"([^"]+)"(\s*:)/g, '<span style="color:#ce93d8">"$1"</span>$2')
-    .replace(/:\s*"([^"]*)"/g, ': <span style="color:#ffcc80">"$1"</span>')
-    .replace(/:\s*(-?\d+\.?\d*)/g, ': <span style="color:#80deea">$1</span>')
-    .replace(/:\s*(true|false|null)/g, ': <span style="color:#80cbc4">$1</span>');
+    .replace(/"([^"]+)"(\s*:)/g, '<span style="color:#c792ea">"$1"</span>$2')
+    .replace(/:\s*"([^"]*)"/g, ': <span style="color:#f0c674">"$1"</span>')
+    .replace(/:\s*(-?\d+\.?\d*)/g, ': <span style="color:#7ec8e3">$1</span>')
+    .replace(/:\s*(true|false|null)/g, ': <span style="color:#89ddff">$1</span>');
 }
 
-/* ════════════════════════════════════════════════════════
-   MARKDOWN STRIP (clean file content for ZIP)
-════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   MARKDOWN STRIP
+══════════════════════════════════════════════════════════ */
 function stripMd(s) {
-  return s
-    .replace(/^```[\w]*\s*\n?/gm, '')
-    .replace(/\n?```\s*$/gm, '')
-    .replace(/^\s*```\s*$/gm, '')
-    .trim();
+  return s.replace(/^```[\w]*\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').replace(/^\s*```\s*$/gm, '').trim();
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    FILE PARSING
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function parseFiles(t) {
-  // Primary: with FILE_COMPLETE marker
   let re = /FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)\n?\[FILE_COMPLETE/g, m;
-  while ((m = re.exec(t)) !== null) {
-    const p = m[1].trim(), c = stripMd(m[2].trim());
-    if (p && c) S.files[p] = c;
-  }
-  // Fallback: without marker
-  re = /FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)(?=\nFILE:|\n\[BUILD|\n\[DOWNLOAD|\n\[NEED_INFO|\n\[SEARCH|\n\[VALIDATING|\n\[CORRECTING|$)/g;
-  while ((m = re.exec(t)) !== null) {
-    const p = m[1].trim(), c = stripMd(m[2].trim());
-    if (p && c.length > 20 && !S.files[p]) S.files[p] = c;
-  }
+  while ((m = re.exec(t)) !== null) { const p = m[1].trim(), c = stripMd(m[2].trim()); if (p && c) S.files[p] = c; }
+  // Fallback
+  re = /FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)(?=\nFILE:|\n\[BUILD|\n\[DOWNLOAD|\n\[NEED|\n\[SEARCH|\n\[VERIFY|\n\[FIX|\n\[CORRECT|$)/g;
+  while ((m = re.exec(t)) !== null) { const p = m[1].trim(), c = stripMd(m[2].trim()); if (p && c.length > 20 && !S.files[p]) S.files[p] = c; }
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    DOWNLOAD
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function addDL(bb) {
   if (bb.querySelector('.dl')) return;
-  const n = Object.keys(S.files).length;
-  if (!n) return;
-  const b = document.createElement('button');
-  b.className = 'dl';
-  b.textContent = '📦 Download Addon (' + n + ' files)';
+  const n = Object.keys(S.files).length; if (!n) return;
+  const b = document.createElement('button'); b.className = 'dl';
+  b.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v13M5 14l7 7 7-7M3 20h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Download Addon (${n} files)`;
   b.addEventListener('click', () => dlZip(b));
   bb.appendChild(b);
-  setStatus('download ready ✓', false);
-  scr();
-  if (S.cfg.autoZip) setTimeout(() => dlZip(b), 600);
+  setStatus('ready to download', false); scr();
+  // Auto-download only if user has it enabled
+  if (S.cfg.autoZip) setTimeout(() => dlZip(b), 800);
 }
 
 async function dlZip(btn) {
   if (!window.JSZip) { showToast('JSZip missing', 'err'); return; }
   btn.disabled = true;
-  btn.textContent = '⏳ Packaging...';
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" stroke-dasharray="56" stroke-dashoffset="20"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/></circle></svg>Packaging...';
   try {
     const z = new JSZip();
     for (const [p, c] of Object.entries(S.files)) z.file(p.replace(/^\/+/, ''), c);
     z.file('README.txt',
       'Minecraft Bedrock Addon\nGenerated by MC Mod Builder AI v4.0\n\n' +
-      'INSTALL:\n1. Extract ZIP\n' +
-      '2. Copy behavior_packs/ to com.mojang/behavior_packs/\n' +
-      '3. Copy resource_packs/ to com.mojang/resource_packs/\n' +
-      '4. Enable both packs in world settings\n\nFILES:\n' +
-      Object.keys(S.files).map(f => '  ' + f).join('\n') + '\n'
+      'INSTALL:\n' +
+      '1. Extract this ZIP\n' +
+      '2. Copy behavior_packs/<name>/ to com.mojang/behavior_packs/\n' +
+      '3. Copy resource_packs/<name>/ to com.mojang/resource_packs/\n' +
+      '4. Enable both packs in world settings\n\n' +
+      'FILES:\n' + Object.keys(S.files).map(f => '  ' + f).join('\n') + '\n'
     );
     const blob = await z.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-    const url  = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
     const name = (Object.keys(S.files)[0]?.split('/')[1] || 'Addon') + '_bedrock.zip';
-    const a    = Object.assign(document.createElement('a'), { href: url, download: name });
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    btn.textContent = '✅ Downloaded! (' + Object.keys(S.files).length + ' files)';
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Downloaded (${Object.keys(S.files).length} files)`;
     btn.disabled = false;
-    showToast('Addon downloaded!', 'ok');
+    showToast('Download complete', 'ok');
   } catch (e) {
-    btn.textContent = '❌ Retry';
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Retry Download`;
     btn.disabled = false;
-    showToast('Failed: ' + e.message, 'err');
+    showToast('Download failed: ' + e.message, 'err');
   }
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    MARKDOWN (chat mode)
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function renderMD(el, t) {
   let h = esc(t)
     .replace(/```(\w*)\n([\s\S]*?)```/g, (_, _l, c) => '<pre><code>' + c + '</code></pre>')
@@ -878,74 +665,44 @@ function renderMD(el, t) {
     .replace(/^## (.+)$/gm, '<strong style="color:var(--g);display:block;margin:4px 0 2px;font-size:13px">$1</strong>')
     .replace(/^# (.+)$/gm, '<strong style="color:var(--y);display:block;margin:4px 0 2px;font-size:14px">$1</strong>')
     .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
+    .replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
   el.innerHTML = '<p>' + h + '</p>';
 }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    DOM HELPERS
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 function addUsr(t) {
-  const d = document.createElement('div');
-  d.className = 'msg u';
+  const d = document.createElement('div'); d.className = 'msg u';
   d.innerHTML = '<div class="mm">' + fT() + '</div><div class="bb">' + esc(t) + '</div>';
   chat.appendChild(d); scr();
 }
-
 function addAsst(isT, model) {
-  const d  = document.createElement('div');
-  d.className = 'msg a' + (isT ? ' tm' : '');
+  const d = document.createElement('div'); d.className = 'msg a' + (isT ? ' tm' : '');
   const tag = model ? '<span class="mtag">' + fM(model) + '</span>' : '';
   d.innerHTML = '<div class="mm">' + fT() + ' ' + tag + '</div>';
-  const bb = document.createElement('div');
-  bb.className = 'bb';
-  d.appendChild(bb);
-  chat.appendChild(d); scr();
-  return { msg: d, bubble: bb };
+  const bb = document.createElement('div'); bb.className = 'bb'; d.appendChild(bb);
+  chat.appendChild(d); scr(); return { msg: d, bubble: bb };
 }
-
 function addTyping() {
-  const d = document.createElement('div');
-  d.className = 'msg a';
-  d.innerHTML =
-    '<div class="mm">' + fT() + '</div>' +
-    '<div class="bb"><div class="typ">' +
-    '<div class="dot"></div><div class="dot"></div><div class="dot"></div>' +
-    '</div></div>';
+  const d = document.createElement('div'); d.className = 'msg a';
+  d.innerHTML = '<div class="mm">' + fT() + '</div><div class="bb"><div class="typ"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>';
   chat.appendChild(d); scr(); return d;
 }
-
 function addErr(m) {
-  const d = document.createElement('div');
-  d.className = 'msg a';
-  d.innerHTML =
-    '<div class="mm">' + fT() + '</div>' +
-    '<div class="bb" style="border-color:var(--r);color:var(--r)">❌ ' + esc(m) +
-    '<br><span style="font-size:10px;color:var(--t3);display:block;margin-top:3px">Check connection and retry.</span></div>';
+  const d = document.createElement('div'); d.className = 'msg a';
+  d.innerHTML = '<div class="mm">' + fT() + '</div><div class="bb" style="border-color:var(--r);color:var(--r)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="display:inline;vertical-align:middle;margin-right:4px"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' + esc(m) + '<br><span style="font-size:9px;color:var(--t3);display:block;margin-top:3px">Check connection and retry.</span></div>';
   chat.appendChild(d); scr();
 }
-
-function esc(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function fT() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 function fM(m) { if (m.includes('oss') || m.includes('gpt')) return 'GPT-OSS 120B'; return m.split('/').pop().split(':')[0]; }
 function scr() { requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; }); }
-function showToast(m, t = '') {
-  toast.textContent = m;
-  toast.className = 'show ' + t;
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => { toast.className = ''; }, 2600);
-}
+function showToast(m, t = '') { toast.textContent = m; toast.className = 'show ' + t; clearTimeout(toast._t); toast._t = setTimeout(() => { toast.className = ''; }, 2500); }
 
-/* ════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
    INIT
-════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════ */
 loadCfg();
 if (window.innerWidth > 768) tx.focus();
 </script>
