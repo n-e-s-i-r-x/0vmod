@@ -3,6 +3,7 @@
   "routes": [
     { "src": "/api/intent", "dest": "/api/intent.js" },
     { "src": "/api/search", "dest": "/api/search.js" },
+    { "src": "/api/chat",   "dest": "/api/chat.js" },
     { "src": "/api/(.*)",   "dest": "/api/$1" }
   ]
 }
