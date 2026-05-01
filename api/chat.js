@@ -558,7 +558,7 @@ export default async function handler(req, res) {
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
-      let buf = '', accumulated = '', searchQuery = null;
+      let buf = '', accumulated = '', searchQuery = null, fileCompleteTag = null;
       const stripThink = makeThinkStripper();
 
       outer: while (true) {
@@ -586,6 +586,9 @@ export default async function handler(req, res) {
               res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
               const sm = accumulated.match(/\[SEARCH:\s*([^\]]+)\]$/);
               if (sm) { searchQuery = sm[1].trim(); break outer; }
+              // ── Pause after each FILE_COMPLETE so verifier runs immediately ──
+              const fcm = accumulated.match(/\[FILE_COMPLETE:\s*([^\]]+)\]$/);
+              if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
             }
           } catch (_) {}
         }
@@ -595,21 +598,23 @@ export default async function handler(req, res) {
       builderOutput += accumulated;
 
       // ── INLINE PER-FILE VERIFY AS EACH FILE COMPLETES ──
-      const completedTags = accumulated.match(/\[FILE_COMPLETE:\s*[^\]]+\]/g);
-      if (completedTags) {
-        for (const tag of completedTags) {
-          const filePath = tag.replace(/\[FILE_COMPLETE:\s*/, '').replace(/\]$/, '').trim();
-          const escaped = filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const fileMatch = builderOutput.match(
-            new RegExp(`FILE:\\s*${escaped}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
-          );
-          if (!fileMatch) continue;
-
+      if (fileCompleteTag) {
+        const filePath = fileCompleteTag;
+        const escaped = filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const fileMatch = builderOutput.match(
+          new RegExp(`FILE:\\s*${escaped}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
+        );
+        if (fileMatch) {
           const result = await verifyFile(res, messages, filePath, fileMatch[1].trim(), builderOutput);
           if (!result.verified) anyFailed = true;
-          // patch builderOutput so zip gets the fixed version
           builderOutput = builderOutput.replace(fileMatch[1], result.content + '\n');
         }
+        // Resume builder with context of what was written so far
+        builderMsgs.push({ role: 'assistant', content: accumulated });
+        builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format.' });
+        fileCompleteTag = null;
+        round++;
+        continue;
       }
 
       if (searchQuery) {
