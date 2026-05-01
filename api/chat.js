@@ -620,8 +620,8 @@ export default async function handler(req, res) {
         BUILDER_MODEL,
         builderMsgs,
         true,
-        isBuild ? 4096 : 512,
-        isBuild ? 0.2 : 0.7
+        (isBuild || Object.keys(fileRegistry).length > 0 || round > 0) ? 4096 : 512,
+        (isBuild || Object.keys(fileRegistry).length > 0 || round > 0) ? 0.2 : 0.7
       );
 
       if (!resp.ok) {
@@ -676,6 +676,8 @@ export default async function handler(req, res) {
                   if (sm) { searchQuery = sm[1].trim(); break outer; }
                   const fcm = t.match(/^\[FILE_COMPLETE:\s*(.+?)\]$/);
                   if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
+                  // Do NOT break on [BUILD_COMPLETE] here — let the round finish naturally
+                  // so we can detect it after streaming ends below
                 }
               }
             }
@@ -755,7 +757,37 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // ── No tag hit — builder finished its response naturally ──
+      // ── No tag hit — check why the builder stopped ──
+      if (accumulated.includes('[BUILD_COMPLETE]') || accumulated.includes('[DOWNLOAD_READY]')) {
+        // Builder signaled it's done
+        break;
+      }
+
+      if (accumulated.includes('[NEED_INFO]') || accumulated.includes('[/NEED_INFO]')) {
+        // Builder is asking for clarification — done for now
+        break;
+      }
+
+      // Builder output a plan but no file yet — nudge it to start building.
+      // Only do this if: it's a build request, we're on round 0 (plan announcement),
+      // and the response actually looks like a file plan (mentions .json or .js paths).
+      const hasAnyFile = Object.keys(fileRegistry).length > 0;
+      const looksLikePlan = isBuild
+        && round === 0
+        && !hasAnyFile
+        && /\.(json|js|lang)\b/.test(accumulated)
+        && accumulated.length > 20;
+
+      if (looksLikePlan) {
+        builderMsgs.push({ role: 'assistant', content: accumulated });
+        builderMsgs.push({
+          role: 'user',
+          content: `Good. Now output the FIRST file using this exact format (no backticks, no markdown):\n\nFILE: path/to/file.ext\nCONTENT:\n{file content}\n[FILE_COMPLETE: path/to/file.ext]\n\nOutput ONE file then stop.`
+        });
+        round++;
+        continue;
+      }
+
       break;
     }
 
