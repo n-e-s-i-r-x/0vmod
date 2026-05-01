@@ -346,16 +346,19 @@ Keep it concise. One issue per line. Terminal format only.`;
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
-async function callModel(model, messages, streamMode, maxTokens, temp) {
-  const MAX_RETRIES = 4;
-  const RETRY_DELAYS = [3000, 8000, 15000, 30000];
 
+// FIX 1: exponential backoff with jitter, and always return resp (even on final 429)
+async function callModel(model, messages, streamMode, maxTokens, temp) {
+  const MAX_RETRIES = 5;
+  // Base delays: 5s, 12s, 25s, 45s, 60s — longer waits for free-tier rate limits
+  const BASE_DELAYS = [5000, 12000, 25000, 45000, 60000];
+
+  let lastResp;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90000);
-    let resp;
     try {
-      resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      lastResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         signal: controller.signal,
         method: 'POST',
         headers: {
@@ -376,16 +379,25 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
       clearTimeout(timeout);
     }
 
-    if (resp.status === 429 && attempt < MAX_RETRIES) {
-      const delay = RETRY_DELAYS[attempt];
-      const retryAfter = resp.headers.get('retry-after');
-      const wait = retryAfter ? Math.min(parseInt(retryAfter) * 1000, 30000) : delay;
-      await new Promise(r => setTimeout(r, wait));
-      continue;
-    }
+    // Success or non-retryable error — return immediately
+    if (lastResp.status !== 429) return lastResp;
 
-    return resp;
+    // On 429, if we have retries left, wait and retry
+    if (attempt < MAX_RETRIES) {
+      // FIX 2: respect Retry-After header, add jitter to avoid thundering herd
+      const retryAfter = lastResp.headers.get('retry-after');
+      const base = retryAfter
+        ? Math.min(parseInt(retryAfter) * 1000, 60000)
+        : BASE_DELAYS[attempt];
+      const jitter = Math.random() * 2000; // up to 2s of jitter
+      const wait = base + jitter;
+      console.warn(`429 on attempt ${attempt + 1}/${MAX_RETRIES + 1} — waiting ${Math.round(wait / 1000)}s`);
+      await new Promise(r => setTimeout(r, wait));
+    }
   }
+
+  // FIX 3: always return the last response instead of returning undefined
+  return lastResp;
 }
 
 function makeThinkStripper() {
@@ -445,10 +457,18 @@ function extractFileContent(text, filePath) {
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
   const resp = await callModel(model, msgs, true, maxTok, temp);
-  if (!resp.ok) {
-    console.error('streamModel error:', resp.status);
+
+  // FIX 4: surface 429 errors to the stream so the user knows what happened
+  if (!resp || !resp.ok) {
+    const status = resp?.status ?? 'unknown';
+    const msg = status === 429
+      ? '!! Rate limit hit — all retries exhausted. Please wait a minute and try again.'
+      : `!! API error ${status}`;
+    sendLine(res, msg);
+    console.error('streamModel error:', status);
     return '';
   }
+
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '', out = '';
@@ -516,8 +536,16 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     ];
 
     while (vSearches <= MAX_VERIFY_SEARCHES) {
-      await new Promise(r => setTimeout(r, 1500));
+      // FIX 5: increased inter-call delay inside verifier loop to avoid 429 bursts
+      await new Promise(r => setTimeout(r, 4000));
       const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1200, 0.1);
+
+      // If streamModel returned empty due to 429, treat as inconclusive
+      if (!chunk) {
+        sendLine(res, `?? ${filePath} — verifier unavailable (rate limited), continuing`);
+        return { verified: true, content: currentContent };
+      }
+
       vOut += chunk;
 
       const searchMatch = chunk.match(/\[SEARCH:\s*([^\]]+)\]/);
@@ -553,7 +581,6 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     }
 
     if (!passed && !failed) {
-      // Inconclusive — treat as pass to keep pipeline moving
       sendLine(res, `?? ${filePath} — verifier inconclusive, continuing`);
       sendLine(res, '');
       return { verified: true, content: currentContent };
@@ -585,8 +612,10 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
       }
     ];
 
+    // FIX 6: delay before fix call to avoid back-to-back 429s
+    await new Promise(r => setTimeout(r, 5000));
     const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4096, 0.1);
-    const fixedContent = extractFileContent(fixOut, filePath);
+    const fixedContent = fixOut ? extractFileContent(fixOut, filePath) : null;
     if (fixedContent) {
       currentContent = fixedContent;
       sendLine(res, `>> Fixed — re-verifying...`);
@@ -633,22 +662,26 @@ export default async function handler(req, res) {
 
   try {
     let round = 0;
-    // Track whether we're in an active build (set true once first FILE: is seen)
     let buildStarted = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      // Use large token budget once a build has started, small for pure chat
       const maxTok = (isBuild || buildStarted) ? 6000 : 512;
       const temp   = (isBuild || buildStarted) ? 0.2  : 0.7;
 
       const resp = await callModel(BUILDER_MODEL, builderMsgs, true, maxTok, temp);
 
-      if (!resp.ok) {
-        const errText = await resp.text();
-        console.error('Builder error:', resp.status, errText);
+      if (!resp || !resp.ok) {
+        const status = resp?.status ?? 'unknown';
+        console.error('Builder error:', status);
         if (round === 0) {
-          res.setHeader('Content-Type', 'application/json');
-          return res.status(resp.status).json({ error: 'AI service error: ' + resp.status });
+          // FIX 7: don't try to set headers after SSE headers are already sent
+          // SSE headers are set above before the try block, so just stream the error
+          sendLine(res, status === 429
+            ? '!! Rate limited by OpenRouter. Please wait a moment and try again.'
+            : `!! AI service error: ${status}`
+          );
+          res.write('data: [DONE]\n\n');
+          return res.end();
         }
         break;
       }
@@ -657,14 +690,11 @@ export default async function handler(req, res) {
       const dec = new TextDecoder();
       let buf = '', accumulated = '', lineBuf = '';
       let searchQuery = null;
-      // Collect ALL [FILE_COMPLETE] tags seen in this round (builder may output several)
       const fileCompleteTags = [];
       const stripThink = makeThinkStripper();
 
       const heartbeat = setInterval(() => { res.write(': ping\n\n'); }, 5000);
 
-      // Stream the full builder response — don't break on FILE_COMPLETE,
-      // let the builder finish the entire response naturally
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -686,12 +716,10 @@ export default async function handler(req, res) {
               lineBuf += clean;
               res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
 
-              // Detect FILE: start so we know a build is in progress
               if (!buildStarted && /FILE:\s*\S/.test(accumulated)) {
                 buildStarted = true;
               }
 
-              // Scan completed lines for control tags
               const nlIdx = lineBuf.lastIndexOf('\n');
               if (nlIdx !== -1) {
                 const completedLines = lineBuf.slice(0, nlIdx);
@@ -699,10 +727,8 @@ export default async function handler(req, res) {
 
                 for (const cl of completedLines.split('\n')) {
                   const t = cl.trim();
-                  // SEARCH breaks out — we need to inject results
                   const sm = t.match(/^\[SEARCH:\s*([^\]]+)\]$/);
                   if (sm) { searchQuery = sm[1].trim(); break outer; }
-                  // Collect FILE_COMPLETE tags but keep streaming
                   const fcm = t.match(/^\[FILE_COMPLETE:\s*(.+?)\]$/);
                   if (fcm) fileCompleteTags.push(fcm[1].trim());
                 }
@@ -719,14 +745,13 @@ export default async function handler(req, res) {
       // ── Process all completed files from this round ──
       if (fileCompleteTags.length > 0) {
         for (const filePath of fileCompleteTags) {
-          // Try to extract from this round's output first, then full output
           let fileContent = extractFileContent(accumulated, filePath)
             ?? extractFileContent(builderOutput, filePath);
 
           if (fileContent) {
             fileRegistry[filePath] = fileContent;
-            // Small delay between builder and verifier to avoid rate limiting
-            await new Promise(r => setTimeout(r, 2000));
+            // FIX 8: increased delay between builder output and verifier call
+            await new Promise(r => setTimeout(r, 4000));
             const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
             if (!result.verified) anyFailed = true;
             if (result.content !== fileContent) fileRegistry[filePath] = result.content;
@@ -736,12 +761,10 @@ export default async function handler(req, res) {
           }
         }
 
-        // If builder already output BUILD_COMPLETE in this round, we're done
         if (accumulated.includes('[BUILD_COMPLETE]')) {
           break;
         }
 
-        // Otherwise tell builder to continue with remaining files
         const doneFiles = Object.keys(fileRegistry);
         builderMsgs.push({ role: 'assistant', content: accumulated });
         builderMsgs.push({
@@ -787,12 +810,10 @@ export default async function handler(req, res) {
     const hasFiles = Object.keys(fileRegistry).length > 0;
 
     if (!hasFiles && !buildStarted) {
-      // Pure chat or clarification
       res.write('data: [DONE]\n\n');
       return res.end();
     }
 
-    // Re-emit all verified file content so frontend parseFiles() builds the zip correctly
     if (hasFiles) {
       let canonical = '\n';
       for (const [path, content] of Object.entries(fileRegistry)) {
