@@ -579,7 +579,7 @@ export default async function handler(req, res) {
   res.setHeader('X-Builder-Model', BUILDER_MODEL);
   res.setHeader('X-Verifier-Model', VERIFIER_MODEL);
 
-  const MAX_ROUNDS = 8;
+  const MAX_ROUNDS = 30;
   const MAX_MS = 115000;
   const t0 = Date.now();
   const builderMsgs = [{ role: 'system', content: BUILDER_PROMPT }, ...messages];
@@ -590,7 +590,7 @@ export default async function handler(req, res) {
     let anyFailed = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, isModMode ? 6000 : 1024, isModMode ? 0.15 : 0.6);
+      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, isModMode ? 6000 : 4096, isModMode ? 0.15 : 0.3);
 
       if (!resp.ok) {
         const errText = await resp.text();
@@ -668,9 +668,15 @@ export default async function handler(req, res) {
           if (!result.verified) anyFailed = true;
           builderOutput = builderOutput.replace(fileMatch[1], result.content + '\n');
         }
-        // Resume builder with only what was just written (not full history — avoids slowdown)
-        builderMsgs.push({ role: 'assistant', content: accumulated });
-        builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format. Do NOT re-output files already written.' });
+        // Push FULL builderOutput so the model knows exactly what was already written
+        // Using accumulated alone causes the model to lose track of remaining files
+        builderMsgs.push({ role: 'assistant', content: builderOutput });
+        builderMsgs.push({
+          role: 'user',
+          content: 'File verified. Continue generating the NEXT remaining file in the plan (if any). ' +
+            'Do NOT re-output any files already written above. ' +
+            'If all files are done, output [BUILD_COMPLETE] then [DOWNLOAD_READY] and stop.'
+        });
         fileCompleteTag = null;
         round++;
         continue;
