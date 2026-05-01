@@ -351,7 +351,11 @@ Keep it concise. One issue per line. Terminal format only.`;
 // Free-tier OpenRouter models (z-ai/glm-4.5-air:free) allow ~3 req/min.
 // We target ~1 req/20s to stay safely under the limit across builder + verifier.
 const rateLimiter = (() => {
-  const MIN_GAP_MS = 20000; // 20s between calls → ~3 req/min max
+  // Free-tier allows ~3 req/min total across all calls.
+  // Intent runs first (in index.html) and is already done before /api/chat is called,
+  // so inside chat.js we only need to space builder + verifier calls.
+  // 12s gap → 5 req/min budget — safe for builder+verifier pairs without the intent slot.
+  const MIN_GAP_MS = 12000; // 12s between calls inside chat.js
   let lastCallTime = 0;
   return async function waitForSlot() {
     const now = Date.now();
@@ -777,15 +781,27 @@ export default async function handler(req, res) {
           }
         }
 
-        if (accumulated.includes('[BUILD_COMPLETE]')) {
+        if (accumulated.includes('[BUILD_COMPLETE]') || accumulated.includes('[DOWNLOAD_READY]')) {
           break;
         }
 
         const doneFiles = Object.keys(fileRegistry);
+
+        // Check if builder already signaled it's done
+        if (accumulated.includes('[BUILD_COMPLETE]') || accumulated.includes('[DOWNLOAD_READY]')) {
+          break;
+        }
+
+        sendLine(res, '');
+        sendLine(res, `== ─────────────────────────────────────────────`);
+        sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
+        sendLine(res, `>> Verified ${doneFiles.length} file(s) — continuing build...`);
+        sendLine(res, '');
+
         builderMsgs.push({ role: 'assistant', content: accumulated });
         builderMsgs.push({
           role: 'user',
-          content: `Files completed so far: ${doneFiles.join(', ')}\n\n` +
+          content: `Files completed and verified so far: ${doneFiles.join(', ')}\n\n` +
             `Continue outputting the remaining planned files in the same format.\n` +
             `Do NOT re-output files already listed above.\n` +
             `When ALL files are done output [BUILD_COMPLETE] then [DOWNLOAD_READY].`
