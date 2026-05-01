@@ -347,14 +347,33 @@ Keep it concise. One issue per line. Terminal format only.`;
 // HELPERS
 // ─────────────────────────────────────────────
 
+// Global rate limiter: enforces a minimum gap between ALL outgoing API calls.
+// Free-tier OpenRouter models (z-ai/glm-4.5-air:free) allow ~3 req/min.
+// We target ~1 req/20s to stay safely under the limit across builder + verifier.
+const rateLimiter = (() => {
+  const MIN_GAP_MS = 20000; // 20s between calls → ~3 req/min max
+  let lastCallTime = 0;
+  return async function waitForSlot() {
+    const now = Date.now();
+    const elapsed = now - lastCallTime;
+    if (elapsed < MIN_GAP_MS) {
+      const wait = MIN_GAP_MS - elapsed;
+      console.log(`[RateLimiter] Waiting ${Math.round(wait / 1000)}s before next call`);
+      await new Promise(r => setTimeout(r, wait));
+    }
+    lastCallTime = Date.now();
+  };
+})();
+
 // FIX 1: exponential backoff with jitter, and always return resp (even on final 429)
 async function callModel(model, messages, streamMode, maxTokens, temp) {
   const MAX_RETRIES = 5;
-  // Base delays: 5s, 12s, 25s, 45s, 60s — longer waits for free-tier rate limits
-  const BASE_DELAYS = [5000, 12000, 25000, 45000, 60000];
+  // Base delays: 15s, 30s, 45s, 60s, 90s — tuned for free-tier RPM limits
+  const BASE_DELAYS = [15000, 30000, 45000, 60000, 90000];
 
   let lastResp;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    await rateLimiter(); // enforce global min gap between ALL API calls
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90000);
     try {
@@ -384,12 +403,12 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
 
     // On 429, if we have retries left, wait and retry
     if (attempt < MAX_RETRIES) {
-      // FIX 2: respect Retry-After header, add jitter to avoid thundering herd
+      // FIX 2: respect Retry-After header; fall back to longer base delays
       const retryAfter = lastResp.headers.get('retry-after');
       const base = retryAfter
-        ? Math.min(parseInt(retryAfter) * 1000, 60000)
+        ? Math.max(parseInt(retryAfter) * 1000, BASE_DELAYS[attempt]) // at least our base
         : BASE_DELAYS[attempt];
-      const jitter = Math.random() * 2000; // up to 2s of jitter
+      const jitter = Math.random() * 3000; // up to 3s of jitter
       const wait = base + jitter;
       console.warn(`429 on attempt ${attempt + 1}/${MAX_RETRIES + 1} — waiting ${Math.round(wait / 1000)}s`);
       await new Promise(r => setTimeout(r, wait));
@@ -536,8 +555,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     ];
 
     while (vSearches <= MAX_VERIFY_SEARCHES) {
-      // FIX 5: increased inter-call delay inside verifier loop to avoid 429 bursts
-      await new Promise(r => setTimeout(r, 4000));
+      // rateLimiter in callModel handles spacing; no extra sleep needed here
       const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1200, 0.1);
 
       // If streamModel returned empty due to 429, treat as inconclusive
@@ -612,8 +630,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
       }
     ];
 
-    // FIX 6: delay before fix call to avoid back-to-back 429s
-    await new Promise(r => setTimeout(r, 5000));
+    // rateLimiter in callModel handles spacing before fix call
     const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4096, 0.1);
     const fixedContent = fixOut ? extractFileContent(fixOut, filePath) : null;
     if (fixedContent) {
@@ -750,8 +767,7 @@ export default async function handler(req, res) {
 
           if (fileContent) {
             fileRegistry[filePath] = fileContent;
-            // FIX 8: increased delay between builder output and verifier call
-            await new Promise(r => setTimeout(r, 4000));
+            // rateLimiter in callModel handles spacing before verifier
             const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
             if (!result.verified) anyFailed = true;
             if (result.content !== fileContent) fileRegistry[filePath] = result.content;
