@@ -1,4 +1,4 @@
-const CLASSIFIER_MODEL = 'deepseek/deepseek-r1-0528-qwen3-8b';
+const CLASSIFIER_MODEL = 'z-ai/glm-4.5-air:free';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
