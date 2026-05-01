@@ -1,7 +1,7 @@
 import { search } from './search.js';
 
-const BUILDER_MODEL  = 'openai/gpt-oss-120b:free';
-const VERIFIER_MODEL = 'openai/gpt-oss-120b:free';
+const BUILDER_MODEL  = 'z-ai/glm-4.5-air:free';
+const VERIFIER_MODEL = 'z-ai/glm-4.5-air:free';
 
 // ─────────────────────────────────────────────
 // BUILDER SYSTEM PROMPT
