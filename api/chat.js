@@ -345,7 +345,10 @@ Keep it concise. One issue per line. Terminal format only.`;
 // HELPERS
 // ─────────────────────────────────────────────
 async function callModel(model, messages, streamMode, maxTokens, temp) {
-  return fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  const fetchPromise = fetch('https://openrouter.ai/api/v1/chat/completions', {
+    signal: controller.signal,
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -361,6 +364,8 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
       stream: streamMode
     })
   });
+  fetchPromise.finally(() => clearTimeout(timeout));
+  return fetchPromise;
 }
 
 function makeThinkStripper() {
@@ -604,6 +609,7 @@ export default async function handler(req, res) {
       let searchQuery = null, fileCompleteTag = null;
       const stripThink = makeThinkStripper();
 
+      const heartbeat = setInterval(() => { res.write(': ping\n\n'); }, 5000);
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -645,6 +651,7 @@ export default async function handler(req, res) {
         }
       }
 
+      clearInterval(heartbeat);
       reader.cancel().catch(() => {});
       builderOutput += accumulated;
 
