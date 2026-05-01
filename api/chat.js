@@ -408,10 +408,9 @@ async function streamModel(res, model, msgs, maxTok, temp) {
       if (d === '[DONE]') continue;
       try {
         const p = JSON.parse(d);
-        const reasoning = p.choices?.[0]?.delta?.reasoning || '';
-        if (reasoning) continue;
         const delta = p.choices?.[0]?.delta?.content
           ?? p.choices?.[0]?.message?.content
+          ?? p.choices?.[0]?.delta?.reasoning
           ?? '';
         if (delta) {
           const clean = stripThink(delta);
@@ -574,10 +573,9 @@ export default async function handler(req, res) {
           if (d === '[DONE]') break outer;
           try {
             const p = JSON.parse(d);
-            const reasoning = p.choices?.[0]?.delta?.reasoning || '';
-            if (reasoning) continue;
             const delta = p.choices?.[0]?.delta?.content
               ?? p.choices?.[0]?.message?.content
+              ?? p.choices?.[0]?.delta?.reasoning
               ?? '';
             if (delta) {
               const clean = stripThink(delta);
