@@ -516,7 +516,7 @@ async function silentModel(model, messages, maxTok, temp) {
 }
 
 // ─────────────────────────────────────────────
-// verifyFile — verify one file, with retries
+// verifyFile — verify one file, with retries (wrapped in try-catch)
 // ─────────────────────────────────────────────
 async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
   const MAX_FILE_RETRIES = 3;
@@ -672,13 +672,22 @@ export default async function handler(req, res) {
     let anyFailed = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      const resp = await callModel(
-        BUILDER_MODEL,
-        builderMsgs,
-        true,
-        (isBuild || Object.keys(fileRegistry).length > 0 || round > 0) ? 4096 : 512,
-        (isBuild || Object.keys(fileRegistry).length > 0 || round > 0) ? 0.2 : 0.7
-      );
+      // ── Guard against builder call failures ──
+      let resp;
+      try {
+        resp = await callModel(
+          BUILDER_MODEL,
+          builderMsgs,
+          true,
+          (isBuild || Object.keys(fileRegistry).length > 0 || round > 0) ? 4096 : 512,
+          (isBuild || Object.keys(fileRegistry).length > 0 || round > 0) ? 0.2 : 0.7
+        );
+      } catch (fetchErr) {
+        console.error('Builder call error:', fetchErr);
+        sendLine(res, '!! Builder request failed — ending build.');
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => '');
@@ -769,10 +778,17 @@ export default async function handler(req, res) {
         if (fileContent) {
           fileRegistry[filePath] = fileContent;
 
-          const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
-          if (!result.verified) anyFailed = true;
-          if (result.content !== fileContent) {
-            fileRegistry[filePath] = result.content;
+          // ── Verify with error guard ──
+          try {
+            const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
+            if (!result.verified) anyFailed = true;
+            if (result.content !== fileContent) {
+              fileRegistry[filePath] = result.content;
+            }
+          } catch (verifyErr) {
+            console.error(`Verification error for ${filePath}:`, verifyErr);
+            sendLine(res, `!! Verification crashed for ${filePath} — keeping as-is`);
+            // Continue with the file as-is, don't stop the whole pipeline
           }
         } else {
           sendLine(res, `!! Could not extract content for ${filePath} — skipping verify`);
