@@ -778,6 +778,8 @@ function stripMd(s) {
     .replace(/^```[\w]*\s*\n?/gm, '')
     .replace(/\n?```\s*$/gm, '')
     .replace(/^\s*```\s*$/gm, '')
+    .replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '')
+    .replace(/^\s*\[FILE_COMPLETE:[^\]]*\]\s*$/gm, '')
     .trim();
 }
 
