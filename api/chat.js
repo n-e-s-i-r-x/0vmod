@@ -48,6 +48,7 @@ CONTENT:
 IMPORTANT: Output ONE file then STOP. Wait for the continue signal before outputting the next file.
 Do NOT output multiple files in one response.
 Do NOT use backticks anywhere in output.
+Once the user has confirmed all details, DO NOT output [NEED_INFO] again – just build the files.
 
 STEP 4 — END (only after ALL files are done):
 [BUILD_COMPLETE]
@@ -408,7 +409,7 @@ function getDelta(p) {
 }
 
 // ─────────────────────────────────────────────
-// extractFileContent — safely pull content between FILE/FILE_COMPLETE markers
+// extractFileContent
 // ─────────────────────────────────────────────
 function extractFileContent(builderOutput, filePath) {
   const esc = filePath.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
@@ -419,7 +420,7 @@ function extractFileContent(builderOutput, filePath) {
 }
 
 // ─────────────────────────────────────────────
-// streamModel — streams model output to client AND returns full text
+// streamModel
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
   let resp;
@@ -478,7 +479,7 @@ async function streamModel(res, model, msgs, maxTok, temp) {
 }
 
 // ─────────────────────────────────────────────
-// silentModel — calls model without streaming to client, returns raw text
+// silentModel
 // ─────────────────────────────────────────────
 async function silentModel(model, messages, maxTok, temp) {
   const resp = await callModel(model, messages, true, maxTok, temp);
@@ -516,7 +517,7 @@ async function silentModel(model, messages, maxTok, temp) {
 }
 
 // ─────────────────────────────────────────────
-// verifyFile — verify one file, with retries (wrapped in try-catch)
+// verifyFile
 // ─────────────────────────────────────────────
 async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
   const MAX_FILE_RETRIES = 3;
@@ -619,7 +620,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
       }
     ];
 
-    // ── SILENT FIX: capture output without streaming to client ──
+    // ── SILENT FIX: capture without streaming ──
     const fixOut = await silentModel(BUILDER_MODEL, fixMsgs, 4096, 0.1);
     const fixedContent = extractFileContent(fixOut, filePath);
     if (fixedContent) {
@@ -634,7 +635,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
 }
 
 // ─────────────────────────────────────────────
-// MAIN HANDLER
+// MAIN HANDLER (with NEED_INFO guard)
 // ─────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -672,7 +673,6 @@ export default async function handler(req, res) {
     let anyFailed = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      // ── Guard against builder call failures ──
       let resp;
       try {
         resp = await callModel(
@@ -770,6 +770,22 @@ export default async function handler(req, res) {
       if (fileCompleteTag) {
         const filePath = fileCompleteTag;
 
+        // Duplicate guard: if file already done, skip and nudge builder
+        if (fileRegistry[filePath]) {
+          sendLine(res, `!! Duplicate file ${filePath} ignored — already verified`);
+          const doneFiles = Object.keys(fileRegistry);
+          builderMsgs.push({ role: 'assistant', content: accumulated });
+          builderMsgs.push({
+            role: 'user',
+            content: `File ${filePath} was already completed. Do NOT output it again.\n` +
+              `Files completed so far: ${doneFiles.join(', ')}\n\n` +
+              `Continue with the NEXT file in the plan. Output ONE file then stop.`
+          });
+          fileCompleteTag = null;
+          round++;
+          continue;
+        }
+
         let fileContent = extractFileContent(accumulated, filePath);
         if (!fileContent) {
           fileContent = extractFileContent(builderOutput, filePath);
@@ -778,7 +794,6 @@ export default async function handler(req, res) {
         if (fileContent) {
           fileRegistry[filePath] = fileContent;
 
-          // ── Verify with error guard ──
           try {
             const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
             if (!result.verified) anyFailed = true;
@@ -788,7 +803,6 @@ export default async function handler(req, res) {
           } catch (verifyErr) {
             console.error(`Verification error for ${filePath}:`, verifyErr);
             sendLine(res, `!! Verification crashed for ${filePath} — keeping as-is`);
-            // Continue with the file as-is, don't stop the whole pipeline
           }
         } else {
           sendLine(res, `!! Could not extract content for ${filePath} — skipping verify`);
@@ -835,15 +849,30 @@ export default async function handler(req, res) {
       }
 
       // ── No tag hit — check why the builder stopped ──
+      const hasAnyFile = Object.keys(fileRegistry).length > 0;
+
+      // BUILD_COMPLETE / DOWNLOAD_READY stop normally
       if (accumulated.includes('[BUILD_COMPLETE]') || accumulated.includes('[DOWNLOAD_READY]')) {
         break;
       }
 
+      // NEED_INFO: only break if NO files have been generated yet (initial clarification)
       if (accumulated.includes('[NEED_INFO]') || accumulated.includes('[/NEED_INFO]')) {
-        break;
+        if (!hasAnyFile) {
+          break;   // still in clarification phase, stop and wait for user
+        } else {
+          // Builder asked for info mid‑build — it shouldn’t, so push it forward
+          builderMsgs.push({ role: 'assistant', content: accumulated });
+          builderMsgs.push({
+            role: 'user',
+            content: `All information was already confirmed. Do NOT output [NEED_INFO]. Proceed directly to the NEXT file. Output ONE file then stop.`
+          });
+          round++;
+          continue;
+        }
       }
 
-      const hasAnyFile = Object.keys(fileRegistry).length > 0;
+      // Plan detected but no file yet — nudge to start
       const looksLikePlan = isBuild
         && round === 0
         && !hasAnyFile
@@ -860,6 +889,7 @@ export default async function handler(req, res) {
         continue;
       }
 
+      // If we get here, builder just chatted — break
       break;
     }
 
