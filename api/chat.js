@@ -347,27 +347,45 @@ Keep it concise. One issue per line. Terminal format only.`;
 // HELPERS
 // ─────────────────────────────────────────────
 async function callModel(model, messages, streamMode, maxTokens, temp) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
-  const fetchPromise = fetch('https://openrouter.ai/api/v1/chat/completions', {
-    signal: controller.signal,
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://0vmod.vercel.app',
-      'X-Title': 'MC Bedrock Builder'
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: temp ?? 0.2,
-      max_tokens: maxTokens ?? 4096,
-      stream: streamMode
-    })
-  });
-  fetchPromise.finally(() => clearTimeout(timeout));
-  return fetchPromise;
+  const MAX_RETRIES = 4;
+  const RETRY_DELAYS = [3000, 8000, 15000, 30000];
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
+    let resp;
+    try {
+      resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://0vmod.vercel.app',
+          'X-Title': 'MC Bedrock Builder'
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: temp ?? 0.2,
+          max_tokens: maxTokens ?? 4096,
+          stream: streamMode
+        })
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (resp.status === 429 && attempt < MAX_RETRIES) {
+      const delay = RETRY_DELAYS[attempt];
+      const retryAfter = resp.headers.get('retry-after');
+      const wait = retryAfter ? Math.min(parseInt(retryAfter) * 1000, 30000) : delay;
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+
+    return resp;
+  }
 }
 
 function makeThinkStripper() {
