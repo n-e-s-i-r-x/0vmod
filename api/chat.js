@@ -393,6 +393,16 @@ function sendSSE(res, content) {
 function sendLine(res, text) { sendSSE(res, text + '\n'); }
 
 // ─────────────────────────────────────────────
+// getDelta — extract text from any SSE chunk format
+// ─────────────────────────────────────────────
+function getDelta(p) {
+  return p.choices?.[0]?.delta?.content
+    ?? p.choices?.[0]?.message?.content
+    ?? p.choices?.[0]?.delta?.reasoning
+    ?? '';
+}
+
+// ─────────────────────────────────────────────
 // streamModel — used by verifier and fixer
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
@@ -402,31 +412,31 @@ async function streamModel(res, model, msgs, maxTok, temp) {
   const dec = new TextDecoder();
   let buf = '', out = '';
   const stripThink = makeThinkStripper();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n'); buf = lines.pop() || '';
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const d = line.slice(6).trim();
-      if (d === '[DONE]') continue;
-      try {
-        const p = JSON.parse(d);
-        const delta = p.choices?.[0]?.delta?.content
-          ?? p.choices?.[0]?.message?.content
-          ?? p.choices?.[0]?.delta?.reasoning
-          ?? '';
-        if (delta) {
-          const clean = stripThink(delta);
-          if (!clean) continue;
-          out += clean;
-          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
-        }
-      } catch (_) {}
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const d = line.slice(6).trim();
+        if (d === '[DONE]') continue;
+        try {
+          const p = JSON.parse(d);
+          const delta = getDelta(p);
+          if (delta) {
+            const clean = stripThink(delta);
+            if (!clean) continue;
+            out += clean;
+            res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
+          }
+        } catch (_) {}
+      }
     }
+  } finally {
+    reader.cancel().catch(() => {});
   }
-  reader.releaseLock();
   return out;
 }
 
@@ -451,7 +461,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     // ── Verifier with optional search loop ──
     let vOut = '';
     let vSearches = 0;
-    const vMsgsBase = [
+    const vMsgs = [
       { role: 'system', content: VERIFIER_PROMPT },
       {
         role: 'user',
@@ -465,13 +475,12 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
           `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
       }
     ];
-    const vMsgs = [...vMsgsBase];
 
     while (vSearches <= MAX_VERIFY_SEARCHES) {
       const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1500, 0.1);
       vOut += chunk;
 
-      const searchMatch = vOut.match(/\[SEARCH:\s*([^\]]+)\]\s*$/);
+      const searchMatch = chunk.match(/\[SEARCH:\s*([^\]]+)\]/);
       if (searchMatch && vSearches < MAX_VERIFY_SEARCHES) {
         vSearches++;
         const q = searchMatch[1].trim();
@@ -533,7 +542,6 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4000, 0.1);
     const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
     if (fixedMatch) {
-      // Strip any [VERIFY:] tags that leaked into content
       currentContent = fixedMatch[1].trim().replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
       sendLine(res, `>> Fixed — re-verifying...`);
     } else {
@@ -591,36 +599,47 @@ export default async function handler(req, res) {
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
-      let buf = '', accumulated = '', searchQuery = null, fileCompleteTag = null;
+      // lineBuf holds the current incomplete line being assembled from chunks
+      let buf = '', accumulated = '', lineBuf = '';
+      let searchQuery = null, fileCompleteTag = null;
       const stripThink = makeThinkStripper();
 
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n'); buf = lines.pop() || '';
+        const parts = buf.split('\n'); buf = parts.pop() || '';
 
-        for (const line of lines) {
+        for (const line of parts) {
           if (line.startsWith(':')) continue;
           if (!line.startsWith('data: ')) continue;
           const d = line.slice(6).trim();
           if (d === '[DONE]') break outer;
           try {
             const p = JSON.parse(d);
-            const delta = p.choices?.[0]?.delta?.content
-              ?? p.choices?.[0]?.message?.content
-              ?? p.choices?.[0]?.delta?.reasoning
-              ?? '';
+            const delta = getDelta(p);
             if (delta) {
               const clean = stripThink(delta);
               if (!clean) continue;
               accumulated += clean;
+              lineBuf += clean;
               res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
-              const sm = accumulated.match(/\[SEARCH:\s*([^\]]+)\]\s*$/);
-              if (sm) { searchQuery = sm[1].trim(); break outer; }
-              // ── Pause after each FILE_COMPLETE so verifier runs immediately ──
-              const fcm = accumulated.match(/\[FILE_COMPLETE:\s*([^\]]+)\]\s*$/);
-              if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
+
+              // ── Check completed lines for control tags ──
+              // A line is complete when it contains a newline
+              const nlIdx = lineBuf.lastIndexOf('\n');
+              if (nlIdx !== -1) {
+                const completedLines = lineBuf.slice(0, nlIdx);
+                lineBuf = lineBuf.slice(nlIdx + 1);
+
+                for (const cl of completedLines.split('\n')) {
+                  const t = cl.trim();
+                  const sm = t.match(/^\[SEARCH:\s*([^\]]+)\]$/);
+                  if (sm) { searchQuery = sm[1].trim(); break outer; }
+                  const fcm = t.match(/^\[FILE_COMPLETE:\s*([^\]]+)\]$/);
+                  if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
+                }
+              }
             }
           } catch (_) {}
         }
@@ -637,15 +656,14 @@ export default async function handler(req, res) {
           new RegExp(`FILE:\\s*${escaped}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
         );
         if (fileMatch) {
-          // Strip [VERIFY:...] lines from file content before verifying/zipping
           const cleanedContent = fileMatch[1].trim().replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
           const result = await verifyFile(res, messages, filePath, cleanedContent, builderOutput);
           if (!result.verified) anyFailed = true;
           builderOutput = builderOutput.replace(fileMatch[1], result.content + '\n');
         }
-        // Resume builder: push full builderOutput as assistant context so it knows all files written so far
+        // Resume builder with only what was just written (not full history — avoids slowdown)
         builderMsgs.push({ role: 'assistant', content: accumulated });
-builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format. Do NOT re-output files already written.' });
+        builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format. Do NOT re-output files already written.' });
         fileCompleteTag = null;
         round++;
         continue;
