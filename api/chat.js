@@ -37,19 +37,18 @@ Then STOP. Wait for the user to reply before generating code.
 STEP 2 — ANNOUNCE PLAN (after user confirms):
 List every file you will generate on separate lines.
 
-STEP 3 — BUILD FILES ONE AT A TIME:
-For each file output exactly in this format (no backticks, no markdown):
+STEP 3 — BUILD ALL FILES:
+Output every file one after another without stopping. For each file use exactly this format:
 
 FILE: path/to/filename.ext
 CONTENT:
-{raw file content here}
+{raw file content — no backticks, no markdown}
 [FILE_COMPLETE: path/to/filename.ext]
 
-IMPORTANT: Output ONE file then STOP. Wait for the continue signal before outputting the next file.
-Do NOT output multiple files in one response.
+Output ALL files back to back. Do NOT stop between files. Do NOT wait.
 Do NOT use backticks anywhere in output.
 
-STEP 4 — END (only after ALL files are done):
+STEP 4 — END (after ALL files are output):
 [BUILD_COMPLETE]
 [DOWNLOAD_READY]
 
@@ -407,22 +406,24 @@ function getDelta(p) {
     ?? '';
 }
 
-// ─────────────────────────────────────────────
-// extractFileContent — safely pull content between FILE/FILE_COMPLETE markers
-// Fixed: proper regex escaping so paths with slashes/dots work correctly
-// ─────────────────────────────────────────────
-function extractFileContent(builderOutput, filePath) {
-  // Escape every regex special char in the path
-  const esc = filePath.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-  const rx = new RegExp('FILE:\\s*' + esc + '\\s*\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:\\s*' + esc + '\\]');
-  const m = builderOutput.match(rx);
+// Safe regex escape for file paths
+function escapeRegex(str) {
+  return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
+
+// Extract file content between FILE:/CONTENT: and [FILE_COMPLETE:] markers
+function extractFileContent(text, filePath) {
+  const esc = escapeRegex(filePath);
+  const rx = new RegExp(
+    'FILE:\\s*' + esc + '\\s*\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:\\s*' + esc + '\\s*\\]'
+  );
+  const m = text.match(rx);
   if (!m) return null;
-  // Strip any stray [VERIFY:...] lines from inside the content block
   return m[1].replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
 }
 
 // ─────────────────────────────────────────────
-// streamModel — streams model output to client AND returns full text
+// streamModel — streams to client and returns full text
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
   const resp = await callModel(model, msgs, true, maxTok, temp);
@@ -460,7 +461,7 @@ async function streamModel(res, model, msgs, maxTok, temp) {
 }
 
 // ─────────────────────────────────────────────
-// verifyFile — verify one file synchronously (no fire-and-forget)
+// verifyFile — verify one file, retry on fail
 // ─────────────────────────────────────────────
 async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
   const MAX_FILE_RETRIES = 3;
@@ -486,9 +487,9 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
           `Check for:\n` +
           `- Correct Bedrock API usage\n` +
           `- Valid format_version and min_engine_version\n` +
-          `- If version is wrong or nonexistent, flag it with [VERSION_CORRECTION: explanation]\n` +
-          `- Any broken patterns or deprecated APIs\n` +
-          `- [FILE_COMPLETE:...] tags inside file content (always FAIL if present)\n\n` +
+          `- If version is wrong, flag with [VERSION_CORRECTION: explanation]\n` +
+          `- Deprecated APIs or broken patterns\n` +
+          `- [FILE_COMPLETE:...] tags inside file content (always FAIL)\n\n` +
           `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
       }
     ];
@@ -520,7 +521,6 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
 
     const versionMatch = vOut.match(/\[VERSION_CORRECTION:\s*([^\]]+)\]/);
     if (versionMatch) {
-      sendLine(res, '');
       sendLine(res, `!! VERSION NOTICE: ${versionMatch[1].trim()}`);
     }
 
@@ -531,13 +531,12 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     }
 
     if (!passed && !failed) {
-      // Verifier output cut off / malformed — treat as pass to keep pipeline moving
+      // Inconclusive — treat as pass to keep pipeline moving
       sendLine(res, `?? ${filePath} — verifier inconclusive, continuing`);
       sendLine(res, '');
       return { verified: true, content: currentContent };
     }
 
-    sendLine(res, '');
     sendLine(res, `!! FAIL: ${filePath} — attempt ${attempt}/${MAX_FILE_RETRIES}`);
 
     if (attempt >= MAX_FILE_RETRIES) {
@@ -557,9 +556,9 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
       {
         role: 'user',
         content: `VERIFIER rejected ${filePath} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
-          `Fix EVERY issue listed above.\n` +
-          `Do NOT include [FILE_COMPLETE:...] tags inside the file content itself.\n` +
-          `Output ONLY the fixed file in this exact format:\n\n` +
+          `Fix EVERY issue listed.\n` +
+          `Do NOT put [FILE_COMPLETE:...] tags inside the file content itself.\n` +
+          `Output ONLY the fixed file:\n\n` +
           `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[FILE_COMPLETE: ${filePath}]`
       }
     ];
@@ -603,26 +602,24 @@ export default async function handler(req, res) {
   const MAX_MS = 115000;
   const t0 = Date.now();
 
-  // Keep a compact file registry — path -> content — instead of one giant builderOutput string
+  // file path -> verified content
   const fileRegistry = {};
-  // Full output for context (never sent back wholesale — trimmed per round)
   let builderOutput = '';
+  let anyFailed = false;
 
-  // Initial messages for builder
   const builderMsgs = [{ role: 'system', content: BUILDER_PROMPT }, ...messages];
 
   try {
     let round = 0;
-    let anyFailed = false;
+    // Track whether we're in an active build (set true once first FILE: is seen)
+    let buildStarted = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      const resp = await callModel(
-        BUILDER_MODEL,
-        builderMsgs,
-        true,
-        isBuild ? 4096 : 512,
-        isBuild ? 0.2 : 0.7
-      );
+      // Use large token budget once a build has started, small for pure chat
+      const maxTok = (isBuild || buildStarted) ? 6000 : 512;
+      const temp   = (isBuild || buildStarted) ? 0.2  : 0.7;
+
+      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, maxTok, temp);
 
       if (!resp.ok) {
         const errText = await resp.text();
@@ -637,10 +634,15 @@ export default async function handler(req, res) {
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '', accumulated = '', lineBuf = '';
-      let searchQuery = null, fileCompleteTag = null;
+      let searchQuery = null;
+      // Collect ALL [FILE_COMPLETE] tags seen in this round (builder may output several)
+      const fileCompleteTags = [];
       const stripThink = makeThinkStripper();
 
       const heartbeat = setInterval(() => { res.write(': ping\n\n'); }, 5000);
+
+      // Stream the full builder response — don't break on FILE_COMPLETE,
+      // let the builder finish the entire response naturally
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -662,7 +664,12 @@ export default async function handler(req, res) {
               lineBuf += clean;
               res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
 
-              // Check completed lines for control tags
+              // Detect FILE: start so we know a build is in progress
+              if (!buildStarted && /FILE:\s*\S/.test(accumulated)) {
+                buildStarted = true;
+              }
+
+              // Scan completed lines for control tags
               const nlIdx = lineBuf.lastIndexOf('\n');
               if (nlIdx !== -1) {
                 const completedLines = lineBuf.slice(0, nlIdx);
@@ -670,10 +677,12 @@ export default async function handler(req, res) {
 
                 for (const cl of completedLines.split('\n')) {
                   const t = cl.trim();
+                  // SEARCH breaks out — we need to inject results
                   const sm = t.match(/^\[SEARCH:\s*([^\]]+)\]$/);
                   if (sm) { searchQuery = sm[1].trim(); break outer; }
+                  // Collect FILE_COMPLETE tags but keep streaming
                   const fcm = t.match(/^\[FILE_COMPLETE:\s*(.+?)\]$/);
-                  if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
+                  if (fcm) fileCompleteTags.push(fcm[1].trim());
                 }
               }
             }
@@ -685,47 +694,40 @@ export default async function handler(req, res) {
       reader.cancel().catch(() => {});
       builderOutput += accumulated;
 
-      // ── FILE COMPLETE: verify then continue ──
-      if (fileCompleteTag) {
-        const filePath = fileCompleteTag;
+      // ── Process all completed files from this round ──
+      if (fileCompleteTags.length > 0) {
+        for (const filePath of fileCompleteTags) {
+          // Try to extract from this round's output first, then full output
+          let fileContent = extractFileContent(accumulated, filePath)
+            ?? extractFileContent(builderOutput, filePath);
 
-        // Extract content using fixed regex (searches accumulated for this round)
-        let fileContent = extractFileContent(accumulated, filePath);
-
-        // Fallback: search full builderOutput in case content spans chunks
-        if (!fileContent) {
-          fileContent = extractFileContent(builderOutput, filePath);
-        }
-
-        if (fileContent) {
-          fileRegistry[filePath] = fileContent;
-
-          // Verify synchronously — we must wait before telling builder to continue
-          // so the verifier output appears in stream before next file starts
-          const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
-          if (!result.verified) anyFailed = true;
-          if (result.content !== fileContent) {
-            fileRegistry[filePath] = result.content;
+          if (fileContent) {
+            fileRegistry[filePath] = fileContent;
+            const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
+            if (!result.verified) anyFailed = true;
+            if (result.content !== fileContent) fileRegistry[filePath] = result.content;
+          } else {
+            sendLine(res, `!! Could not extract content for ${filePath} — skipping verify`);
+            sendLine(res, '');
           }
-        } else {
-          sendLine(res, `!! Could not extract content for ${filePath} — skipping verify`);
-          sendLine(res, '');
         }
 
-        // Tell builder to continue with ONLY the file list as context (not full output)
-        // This prevents context from ballooning on every round
+        // If builder already output BUILD_COMPLETE in this round, we're done
+        if (accumulated.includes('[BUILD_COMPLETE]')) {
+          break;
+        }
+
+        // Otherwise tell builder to continue with remaining files
         const doneFiles = Object.keys(fileRegistry);
         builderMsgs.push({ role: 'assistant', content: accumulated });
         builderMsgs.push({
           role: 'user',
-          content: `File verified: ${filePath}\n` +
-            `Files completed so far: ${doneFiles.join(', ')}\n\n` +
-            `Continue with the NEXT file in the plan. Output ONE file then stop.\n` +
-            `Do NOT re-output any file already in the completed list above.\n` +
-            `If ALL planned files are done, output [BUILD_COMPLETE] then [DOWNLOAD_READY].`
+          content: `Files completed so far: ${doneFiles.join(', ')}\n\n` +
+            `Continue outputting the remaining planned files in the same format.\n` +
+            `Do NOT re-output files already listed above.\n` +
+            `When ALL files are done output [BUILD_COMPLETE] then [DOWNLOAD_READY].`
         });
 
-        fileCompleteTag = null;
         round++;
         continue;
       }
@@ -753,29 +755,25 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // ── No tag hit — builder finished its response naturally ──
+      // ── Builder finished naturally with no tags — done ──
       break;
     }
 
-    // ── Determine if this was a real build or just chat/clarification ──
-    const hasBuildComplete = builderOutput.includes('[BUILD_COMPLETE]');
+    // ── End of build ──
     const hasFiles = Object.keys(fileRegistry).length > 0;
 
-    if (!hasBuildComplete && !hasFiles) {
-      // Pure chat or clarification — end cleanly
+    if (!hasFiles && !buildStarted) {
+      // Pure chat or clarification
       res.write('data: [DONE]\n\n');
       return res.end();
     }
 
-    // ── Rebuild canonical file output into builderOutput for frontend parseFiles ──
-    // The frontend reads FILE:/CONTENT:/FILE_COMPLETE: blocks to build the zip
-    // We reconstruct them from fileRegistry so verified/fixed content is used
+    // Re-emit all verified file content so frontend parseFiles() builds the zip correctly
     if (hasFiles) {
       let canonical = '\n';
       for (const [path, content] of Object.entries(fileRegistry)) {
         canonical += `FILE: ${path}\nCONTENT:\n${content}\n[FILE_COMPLETE: ${path}]\n`;
       }
-      // Append canonical blocks so parseFiles() in frontend finds them
       sendSSE(res, canonical);
     }
 
