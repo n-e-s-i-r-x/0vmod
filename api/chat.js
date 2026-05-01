@@ -476,6 +476,98 @@ export default async function handler(req, res) {
       reader.cancel().catch(() => {});
       builderOutput += accumulated;
 
+      // ── INLINE PER-FILE VERIFY DURING STREAMING ──
+      const justCompleted = accumulated.match(/\[FILE_COMPLETE:\s*([^\]]+)\]/g);
+      if (justCompleted) {
+        for (const tag of justCompleted) {
+          const filePath = tag.replace(/\[FILE_COMPLETE:\s*/, '').replace(/\]$/, '').trim();
+          const fileMatch = builderOutput.match(
+            new RegExp(`FILE:\\s*${filePath.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
+          );
+          if (!fileMatch) continue;
+
+          let currentContent = fileMatch[1].trim();
+          let fileVerified = false;
+          let attempt = 0;
+          const MAX_FILE_RETRIES = 4;
+
+          while (attempt < MAX_FILE_RETRIES && !fileVerified) {
+            attempt++;
+            sendLine(res, '');
+            sendLine(res, '== ─────────────────────────────────────────────');
+            sendLine(res, `[VERIFIER: ${VERIFIER_MODEL}]`);
+            sendLine(res, `>> Verifying: ${filePath} (attempt ${attempt})`);
+            sendLine(res, '');
+
+            const vMsgs = [
+              { role: 'system', content: VERIFIER_PROMPT },
+              {
+                role: 'user',
+                content: `Verify this single file:\n\nFILE: ${filePath}\nCONTENT:\n${currentContent}\n\n` +
+                  `Check for:\n` +
+                  `- Correct Bedrock API usage\n` +
+                  `- Valid format_version and min_engine_version\n` +
+                  `- If version is wrong or nonexistent (e.g. 1.26.0), flag it with [VERSION_CORRECTION: explanation]\n` +
+                  `- Any broken patterns or deprecated APIs\n\n` +
+                  `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
+              }
+            ];
+
+            const vOut = await streamModel(VERIFIER_MODEL, vMsgs, 1500, 0.1);
+            const passed = vOut.includes('[STATUS: PASS]');
+            const failed = vOut.includes('[STATUS: FAIL]');
+
+            const versionMatch = vOut.match(/\[VERSION_CORRECTION:\s*([^\]]+)\]/);
+            if (versionMatch) {
+              sendLine(res, '');
+              sendLine(res, `!! VERSION NOTICE: ${versionMatch[1].trim()}`);
+            }
+
+            if (passed && !failed) {
+              fileVerified = true;
+              sendLine(res, `OK ${filePath} — PASS`);
+              break;
+            }
+
+            sendLine(res, '');
+            sendLine(res, `!! FAIL: ${filePath} — attempt ${attempt}/${MAX_FILE_RETRIES}`);
+
+            if (attempt >= MAX_FILE_RETRIES) {
+              sendLine(res, `!! Max retries reached for ${filePath} — keeping best version`);
+              break;
+            }
+
+            sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
+            sendLine(res, `>> Fixing ${filePath}...`);
+            sendLine(res, '');
+
+            const fixMsgs = [
+              { role: 'system', content: BUILDER_PROMPT },
+              ...messages,
+              { role: 'assistant', content: builderOutput },
+              {
+                role: 'user',
+                content: `VERIFIER rejected ${filePath} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
+                  `Fix EVERY issue. If a version correction was flagged, use the corrected version.\n` +
+                  `Output ONLY the fixed file in this exact format:\n\n` +
+                  `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[VERIFY: ${filePath}]\n[FILE_COMPLETE: ${filePath}]`
+              }
+            ];
+
+            const fixOut = await streamModel(BUILDER_MODEL, fixMsgs, 4000, 0.1);
+            const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
+            if (fixedMatch) {
+              currentContent = fixedMatch[1].trim();
+              // patch builderOutput with fixed content so final zip uses corrected file
+              builderOutput = builderOutput.replace(fileMatch[1], currentContent);
+              sendLine(res, `>> Fixed — re-verifying...`);
+            } else {
+              sendLine(res, `!! Builder could not produce a fix — retrying`);
+            }
+          }
+        }
+      }
+
       if (searchQuery) {
         res.write(': heartbeat\n\n');
         let sr = { answer: null, results: [], source: 'none' };
@@ -511,8 +603,7 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    // ── PHASE 2: PER-FILE VERIFICATION ───────
-    // Extract each file from builder output
+    // ── PHASE 2: FINAL SUMMARY ───────
     function extractFiles(text) {
       const files = [];
       const re = /FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:[^\]]+\]/g;
@@ -558,98 +649,6 @@ export default async function handler(req, res) {
       reader.releaseLock();
       return out;
     }
-
-    const filesToVerify = extractFiles(builderOutput);
-    const verifiedFiles = {};
-    let anyFailed = false;
-
-    const MAX_FILE_RETRIES = 4;
-
-    for (const file of filesToVerify) {
-      let currentContent = file.content;
-      let fileVerified = false;
-      let attempt = 0;
-
-      while (attempt < MAX_FILE_RETRIES && !fileVerified) {
-        attempt++;
-        sendLine(res, '');
-        sendLine(res, '== ─────────────────────────────────────────────');
-        sendLine(res, `[VERIFIER: ${VERIFIER_MODEL}]`);
-        sendLine(res, `>> Verifying: ${file.path} (attempt ${attempt})`);
-        sendLine(res, '');
-
-        const vMsgs = [
-          { role: 'system', content: VERIFIER_PROMPT },
-          {
-            role: 'user',
-            content: `Verify this single file:\n\nFILE: ${file.path}\nCONTENT:\n${currentContent}\n\n` +
-              `Check for:\n` +
-              `- Correct Bedrock API usage\n` +
-              `- Valid format_version and min_engine_version\n` +
-              `- If user requested a version that doesn't exist or is wrong (e.g. 1.26.0), flag it and suggest the correct closest valid version\n` +
-              `- Any broken patterns or deprecated APIs\n\n` +
-              `Output [CHECK: ${file.path}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].\n` +
-              `If a version is invalid, output [VERSION_CORRECTION: <explanation of what should be used instead>].`
-          }
-        ];
-
-        const vOut = await streamModel(VERIFIER_MODEL, vMsgs, 1500, 0.1);
-        const passed = vOut.includes('[STATUS: PASS]');
-        const failed = vOut.includes('[STATUS: FAIL]');
-
-        // Check if verifier flagged a version issue to inform the user
-        const versionMatch = vOut.match(/\[VERSION_CORRECTION:\s*([^\]]+)\]/);
-        if (versionMatch) {
-          sendLine(res, '');
-          sendLine(res, `!! VERSION NOTICE: ${versionMatch[1].trim()}`);
-        }
-
-        if (passed && !failed) {
-          fileVerified = true;
-          verifiedFiles[file.path] = currentContent;
-          sendLine(res, `OK ${file.path} — PASS`);
-          break;
-        }
-
-        // File failed — builder tries to fix it
-        anyFailed = true;
-        sendLine(res, '');
-        sendLine(res, `!! FAIL: ${file.path} — attempt ${attempt}/${MAX_FILE_RETRIES}`);
-
-        if (attempt >= MAX_FILE_RETRIES) {
-          sendLine(res, `!! Max retries reached for ${file.path} — keeping best version`);
-          verifiedFiles[file.path] = currentContent;
-          break;
-        }
-
-        sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
-        sendLine(res, `>> Fixing ${file.path}...`);
-        sendLine(res, '');
-
-        const fixMsgs = [
-          { role: 'system', content: BUILDER_PROMPT },
-          ...messages,
-          { role: 'assistant', content: builderOutput },
-          {
-            role: 'user',
-            content: `VERIFIER rejected ${file.path} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
-              `Fix EVERY issue listed above. If a version correction was flagged, use the corrected version.\n` +
-              `Output ONLY the fixed file in this exact format, nothing else:\n\n` +
-              `FILE: ${file.path}\nCONTENT:\n{fixed content}\n[VERIFY: ${file.path}]\n[FILE_COMPLETE: ${file.path}]`
-          }
-        ];
-
-        const fixOut = await streamModel(BUILDER_MODEL, fixMsgs, 4000, 0.1);
-        const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
-        if (fixedMatch) {
-          currentContent = fixedMatch[1].trim();
-          sendLine(res, `>> Fixed version ready — re-verifying...`);
-        } else {
-          sendLine(res, `!! Builder could not produce a fix — retrying with same content`);
-        }
-      }
-    }
-
     sendLine(res, '');
     sendLine(res, '== ─────────────────────────────────────────────');
     sendLine(res, '[VERIFIER_DECISION: APPROVE]');
