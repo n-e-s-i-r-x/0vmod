@@ -346,7 +346,7 @@ Keep it concise. One issue per line. Terminal format only.`;
 // ─────────────────────────────────────────────
 async function callModel(model, messages, streamMode, maxTokens, temp) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 90000);
   const fetchPromise = fetch('https://openrouter.ai/api/v1/chat/completions', {
     signal: controller.signal,
     method: 'POST',
@@ -672,12 +672,11 @@ export default async function handler(req, res) {
         );
         if (fileMatch) {
           const cleanedContent = fileMatch[1].trim().replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
-          const result = await verifyFile(res, messages, filePath, cleanedContent, builderOutput);
-          if (!result.verified) anyFailed = true;
-          builderOutput = builderOutput.replace(fileMatch[1], result.content + '\n');
+          // Queue verification but don't block — let builder continue immediately
+          verifyFile(res, messages, filePath, cleanedContent, builderOutput)
+            .then(result => { if (!result.verified) anyFailed = true; })
+            .catch(() => {});
         }
-        // Push FULL builderOutput so the model knows exactly what was already written
-        // Using accumulated alone causes the model to lose track of remaining files
         builderMsgs.push({ role: 'assistant', content: builderOutput });
         builderMsgs.push({
           role: 'user',
