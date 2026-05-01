@@ -359,8 +359,7 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
       messages,
       temperature: temp ?? 0.2,
       max_tokens: maxTokens ?? 4096,
-      stream: streamMode,
-      reasoning: { effort: 'high' }
+      stream: streamMode
     })
   });
 }
@@ -621,6 +620,9 @@ export default async function handler(req, res) {
     sendLine(res, '[BUILD_VERIFIED]');
 
     res.write('data: [DONE]\n\n');
-    res.end(); } catch (_) {}
+    res.end();
+  } catch (e) {
+    console.error('Handler error:', e);
+    try { res.write('data: [DONE]\n\n'); res.end(); } catch (_) {}
   }
 }
