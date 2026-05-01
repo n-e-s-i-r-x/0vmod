@@ -359,7 +359,8 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
       messages,
       temperature: temp ?? 0.2,
       max_tokens: maxTokens ?? 4096,
-      stream: streamMode
+      stream: streamMode,
+      reasoning: { effort: 'high' }
     })
   });
 }
@@ -432,6 +433,8 @@ export default async function handler(req, res) {
           try {
             const p = JSON.parse(d);
             const delta = p.choices?.[0]?.delta?.content || '';
+            const reasoning = p.choices?.[0]?.delta?.reasoning || '';
+            if (reasoning) continue;
             if (delta) {
               accumulated += delta;
               res.write(line + '\n\n');
