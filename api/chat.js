@@ -445,7 +445,10 @@ function extractFileContent(text, filePath) {
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
   const resp = await callModel(model, msgs, true, maxTok, temp);
-  if (!resp.ok) return '';
+  if (!resp.ok) {
+    console.error('streamModel error:', resp.status);
+    return '';
+  }
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '', out = '';
@@ -513,6 +516,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     ];
 
     while (vSearches <= MAX_VERIFY_SEARCHES) {
+      await new Promise(r => setTimeout(r, 1500));
       const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1200, 0.1);
       vOut += chunk;
 
@@ -721,6 +725,8 @@ export default async function handler(req, res) {
 
           if (fileContent) {
             fileRegistry[filePath] = fileContent;
+            // Small delay between builder and verifier to avoid rate limiting
+            await new Promise(r => setTimeout(r, 2000));
             const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
             if (!result.verified) anyFailed = true;
             if (result.content !== fileContent) fileRegistry[filePath] = result.content;
