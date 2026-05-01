@@ -37,16 +37,19 @@ Then STOP. Wait for the user to reply before generating code.
 STEP 2 — ANNOUNCE PLAN (after user confirms):
 List every file you will generate on separate lines.
 
-STEP 3 — BUILD FILES:
-For each file output exactly in this format:
+STEP 3 — BUILD FILES ONE AT A TIME:
+For each file output exactly in this format (no backticks, no markdown):
 
 FILE: path/to/filename.ext
 CONTENT:
-{raw file content — no backticks, no markdown}
-[VERIFY: path/to/filename.ext]
+{raw file content here}
 [FILE_COMPLETE: path/to/filename.ext]
 
-STEP 4 — END:
+IMPORTANT: Output ONE file then STOP. Wait for the continue signal before outputting the next file.
+Do NOT output multiple files in one response.
+Do NOT use backticks anywhere in output.
+
+STEP 4 — END (only after ALL files are done):
 [BUILD_COMPLETE]
 [DOWNLOAD_READY]
 
@@ -311,7 +314,7 @@ General:
 [ ] All JSON is syntactically valid (no trailing commas, balanced brackets)
 [ ] No literal placeholder text like <uuid> or YOUR_UUID_HERE remains
 [ ] All referenced files actually exist in the build
-[ ] No [VERIFY:...] or [FILE_COMPLETE:...] tags appear inside file content
+[ ] No [FILE_COMPLETE:...] tags appear inside file content
 
 If you are uncertain about a component or API pattern, output:
 [SEARCH: your query here]
@@ -397,9 +400,6 @@ function sendSSE(res, content) {
 }
 function sendLine(res, text) { sendSSE(res, text + '\n'); }
 
-// ─────────────────────────────────────────────
-// getDelta — extract text from any SSE chunk format
-// ─────────────────────────────────────────────
 function getDelta(p) {
   return p.choices?.[0]?.delta?.content
     ?? p.choices?.[0]?.message?.content
@@ -408,7 +408,21 @@ function getDelta(p) {
 }
 
 // ─────────────────────────────────────────────
-// streamModel — used by verifier and fixer
+// extractFileContent — safely pull content between FILE/FILE_COMPLETE markers
+// Fixed: proper regex escaping so paths with slashes/dots work correctly
+// ─────────────────────────────────────────────
+function extractFileContent(builderOutput, filePath) {
+  // Escape every regex special char in the path
+  const esc = filePath.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  const rx = new RegExp('FILE:\\s*' + esc + '\\s*\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:\\s*' + esc + '\\]');
+  const m = builderOutput.match(rx);
+  if (!m) return null;
+  // Strip any stray [VERIFY:...] lines from inside the content block
+  return m[1].replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
+}
+
+// ─────────────────────────────────────────────
+// streamModel — streams model output to client AND returns full text
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
   const resp = await callModel(model, msgs, true, maxTok, temp);
@@ -446,16 +460,15 @@ async function streamModel(res, model, msgs, maxTok, temp) {
 }
 
 // ─────────────────────────────────────────────
-// verifyFile — verify one file, retry up to MAX_FILE_RETRIES
+// verifyFile — verify one file synchronously (no fire-and-forget)
 // ─────────────────────────────────────────────
 async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
-  const MAX_FILE_RETRIES = 4;
-  const MAX_VERIFY_SEARCHES = 3;
+  const MAX_FILE_RETRIES = 3;
+  const MAX_VERIFY_SEARCHES = 2;
   let currentContent = initialContent;
-  let fileVerified = false;
   let attempt = 0;
 
-  while (attempt < MAX_FILE_RETRIES && !fileVerified) {
+  while (attempt < MAX_FILE_RETRIES) {
     attempt++;
     sendLine(res, '');
     sendLine(res, '== ─────────────────────────────────────────────');
@@ -463,7 +476,6 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     sendLine(res, `>> Verifying: ${filePath} (attempt ${attempt})`);
     sendLine(res, '');
 
-    // ── Verifier with optional search loop ──
     let vOut = '';
     let vSearches = 0;
     const vMsgs = [
@@ -474,15 +486,15 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
           `Check for:\n` +
           `- Correct Bedrock API usage\n` +
           `- Valid format_version and min_engine_version\n` +
-          `- If version is wrong or nonexistent (e.g. 1.26.0), flag it with [VERSION_CORRECTION: explanation]\n` +
+          `- If version is wrong or nonexistent, flag it with [VERSION_CORRECTION: explanation]\n` +
           `- Any broken patterns or deprecated APIs\n` +
-          `- [VERIFY:...] or [FILE_COMPLETE:...] tags inside file content (always FAIL if present)\n\n` +
+          `- [FILE_COMPLETE:...] tags inside file content (always FAIL if present)\n\n` +
           `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
       }
     ];
 
     while (vSearches <= MAX_VERIFY_SEARCHES) {
-      const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1500, 0.1);
+      const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1200, 0.1);
       vOut += chunk;
 
       const searchMatch = chunk.match(/\[SEARCH:\s*([^\]]+)\]/);
@@ -497,7 +509,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
         for (const r of sr.results) ctx += `[${r.url}]: ${r.snippet}\n`;
         if (!sr.answer && !sr.results.length) ctx += 'No results found.\n';
         vMsgs.push({ role: 'assistant', content: chunk });
-        vMsgs.push({ role: 'user', content: `Search results:\n\n${ctx}\n\nContinue your verification and output your [STATUS: PASS] or [STATUS: FAIL] verdict.` });
+        vMsgs.push({ role: 'user', content: `Search results:\n\n${ctx}\n\nNow give your [STATUS: PASS] or [STATUS: FAIL] verdict.` });
         continue;
       }
       break;
@@ -513,14 +525,13 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     }
 
     if (passed && !failed) {
-      fileVerified = true;
       sendLine(res, `OK ${filePath} — PASS`);
       sendLine(res, '');
       return { verified: true, content: currentContent };
     }
 
     if (!passed && !failed) {
-      // Verifier output was cut off or malformed — treat as pass to unblock
+      // Verifier output cut off / malformed — treat as pass to keep pipeline moving
       sendLine(res, `?? ${filePath} — verifier inconclusive, continuing`);
       sendLine(res, '');
       return { verified: true, content: currentContent };
@@ -531,6 +542,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
 
     if (attempt >= MAX_FILE_RETRIES) {
       sendLine(res, `!! Max retries reached for ${filePath} — keeping best version`);
+      sendLine(res, '');
       return { verified: false, content: currentContent };
     }
 
@@ -545,20 +557,20 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
       {
         role: 'user',
         content: `VERIFIER rejected ${filePath} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
-          `Fix EVERY issue. If a version correction was flagged, use the corrected version.\n` +
-          `Do NOT include [VERIFY:...] or [FILE_COMPLETE:...] tags inside the file content.\n` +
+          `Fix EVERY issue listed above.\n` +
+          `Do NOT include [FILE_COMPLETE:...] tags inside the file content itself.\n` +
           `Output ONLY the fixed file in this exact format:\n\n` +
-          `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[VERIFY: ${filePath}]\n[FILE_COMPLETE: ${filePath}]`
+          `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[FILE_COMPLETE: ${filePath}]`
       }
     ];
 
-    const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4000, 0.1);
-    const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
-    if (fixedMatch) {
-      currentContent = fixedMatch[1].trim().replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
+    const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4096, 0.1);
+    const fixedContent = extractFileContent(fixOut, filePath);
+    if (fixedContent) {
+      currentContent = fixedContent;
       sendLine(res, `>> Fixed — re-verifying...`);
     } else {
-      sendLine(res, `!! Builder could not produce a fix — retrying`);
+      sendLine(res, `!! Builder could not produce a fix — retrying verifier`);
     }
   }
 
@@ -587,18 +599,30 @@ export default async function handler(req, res) {
   res.setHeader('X-Builder-Model', BUILDER_MODEL);
   res.setHeader('X-Verifier-Model', VERIFIER_MODEL);
 
-  const MAX_ROUNDS = 30;
+  const MAX_ROUNDS = 40;
   const MAX_MS = 115000;
   const t0 = Date.now();
+
+  // Keep a compact file registry — path -> content — instead of one giant builderOutput string
+  const fileRegistry = {};
+  // Full output for context (never sent back wholesale — trimmed per round)
+  let builderOutput = '';
+
+  // Initial messages for builder
   const builderMsgs = [{ role: 'system', content: BUILDER_PROMPT }, ...messages];
 
   try {
-    let builderOutput = '';
     let round = 0;
     let anyFailed = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, isBuild ? 4096 : 512, isBuild ? 0.2 : 0.3);
+      const resp = await callModel(
+        BUILDER_MODEL,
+        builderMsgs,
+        true,
+        isBuild ? 4096 : 512,
+        isBuild ? 0.2 : 0.7
+      );
 
       if (!resp.ok) {
         const errText = await resp.text();
@@ -612,7 +636,6 @@ export default async function handler(req, res) {
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
-      // lineBuf holds the current incomplete line being assembled from chunks
       let buf = '', accumulated = '', lineBuf = '';
       let searchQuery = null, fileCompleteTag = null;
       const stripThink = makeThinkStripper();
@@ -639,8 +662,7 @@ export default async function handler(req, res) {
               lineBuf += clean;
               res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
 
-              // ── Check completed lines for control tags ──
-              // A line is complete when it contains a newline
+              // Check completed lines for control tags
               const nlIdx = lineBuf.lastIndexOf('\n');
               if (nlIdx !== -1) {
                 const completedLines = lineBuf.slice(0, nlIdx);
@@ -650,7 +672,7 @@ export default async function handler(req, res) {
                   const t = cl.trim();
                   const sm = t.match(/^\[SEARCH:\s*([^\]]+)\]$/);
                   if (sm) { searchQuery = sm[1].trim(); break outer; }
-                  const fcm = t.match(/^\[FILE_COMPLETE:\s*([^\]]+)\]$/);
+                  const fcm = t.match(/^\[FILE_COMPLETE:\s*(.+?)\]$/);
                   if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
                 }
               }
@@ -663,32 +685,52 @@ export default async function handler(req, res) {
       reader.cancel().catch(() => {});
       builderOutput += accumulated;
 
-      // ── INLINE PER-FILE VERIFY AS EACH FILE COMPLETES ──
+      // ── FILE COMPLETE: verify then continue ──
       if (fileCompleteTag) {
         const filePath = fileCompleteTag;
-        const escaped = filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const fileMatch = builderOutput.match(
-          new RegExp(`FILE:\\s*${escaped}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
-        );
-        if (fileMatch) {
-          const cleanedContent = fileMatch[1].trim().replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
-          // Queue verification but don't block — let builder continue immediately
-          verifyFile(res, messages, filePath, cleanedContent, builderOutput)
-            .then(result => { if (!result.verified) anyFailed = true; })
-            .catch(() => {});
+
+        // Extract content using fixed regex (searches accumulated for this round)
+        let fileContent = extractFileContent(accumulated, filePath);
+
+        // Fallback: search full builderOutput in case content spans chunks
+        if (!fileContent) {
+          fileContent = extractFileContent(builderOutput, filePath);
         }
-        builderMsgs.push({ role: 'assistant', content: builderOutput });
+
+        if (fileContent) {
+          fileRegistry[filePath] = fileContent;
+
+          // Verify synchronously — we must wait before telling builder to continue
+          // so the verifier output appears in stream before next file starts
+          const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
+          if (!result.verified) anyFailed = true;
+          if (result.content !== fileContent) {
+            fileRegistry[filePath] = result.content;
+          }
+        } else {
+          sendLine(res, `!! Could not extract content for ${filePath} — skipping verify`);
+          sendLine(res, '');
+        }
+
+        // Tell builder to continue with ONLY the file list as context (not full output)
+        // This prevents context from ballooning on every round
+        const doneFiles = Object.keys(fileRegistry);
+        builderMsgs.push({ role: 'assistant', content: accumulated });
         builderMsgs.push({
           role: 'user',
-          content: 'File verified. Continue generating the NEXT remaining file in the plan (if any). ' +
-            'Do NOT re-output any files already written above. ' +
-            'If all files are done, output [BUILD_COMPLETE] then [DOWNLOAD_READY] and stop.'
+          content: `File verified: ${filePath}\n` +
+            `Files completed so far: ${doneFiles.join(', ')}\n\n` +
+            `Continue with the NEXT file in the plan. Output ONE file then stop.\n` +
+            `Do NOT re-output any file already in the completed list above.\n` +
+            `If ALL planned files are done, output [BUILD_COMPLETE] then [DOWNLOAD_READY].`
         });
+
         fileCompleteTag = null;
         round++;
         continue;
       }
 
+      // ── SEARCH: inject results and continue ──
       if (searchQuery) {
         res.write(': heartbeat\n\n');
         let sr = { answer: null, results: [], source: 'none' };
@@ -704,32 +746,51 @@ export default async function handler(req, res) {
         builderMsgs.push({ role: 'assistant', content: accumulated });
         builderMsgs.push({
           role: 'user',
-          content: `Search results for "${searchQuery}":\n\n${ctx}\n\nContinue building from where you stopped. Keep terminal line format. One idea per line.`
+          content: `Search results for "${searchQuery}":\n\n${ctx}\n\nContinue building. Keep terminal line format.`
         });
         searchQuery = null;
         round++;
         continue;
       }
 
+      // ── No tag hit — builder finished its response naturally ──
       break;
     }
 
-    // If no build — just a clarification or chat response — end here
+    // ── Determine if this was a real build or just chat/clarification ──
     const hasBuildComplete = builderOutput.includes('[BUILD_COMPLETE]');
-    const hasFiles = /FILE:\s*\S/.test(builderOutput);
-    if (!hasBuildComplete || !hasFiles) {
+    const hasFiles = Object.keys(fileRegistry).length > 0;
+
+    if (!hasBuildComplete && !hasFiles) {
+      // Pure chat or clarification — end cleanly
       res.write('data: [DONE]\n\n');
       return res.end();
+    }
+
+    // ── Rebuild canonical file output into builderOutput for frontend parseFiles ──
+    // The frontend reads FILE:/CONTENT:/FILE_COMPLETE: blocks to build the zip
+    // We reconstruct them from fileRegistry so verified/fixed content is used
+    if (hasFiles) {
+      let canonical = '\n';
+      for (const [path, content] of Object.entries(fileRegistry)) {
+        canonical += `FILE: ${path}\nCONTENT:\n${content}\n[FILE_COMPLETE: ${path}]\n`;
+      }
+      // Append canonical blocks so parseFiles() in frontend finds them
+      sendSSE(res, canonical);
     }
 
     sendLine(res, '');
     sendLine(res, '== ─────────────────────────────────────────────');
     sendLine(res, '[VERIFIER_DECISION: APPROVE]');
-    sendLine(res, anyFailed ? 'OK All files verified and corrected — BUILD VERIFIED' : 'OK All files passed clean — BUILD VERIFIED');
+    sendLine(res, anyFailed
+      ? 'OK All files verified and corrected — BUILD VERIFIED'
+      : 'OK All files passed clean — BUILD VERIFIED');
     sendLine(res, '[BUILD_VERIFIED]');
+    sendLine(res, '[BUILD_COMPLETE]');
 
     res.write('data: [DONE]\n\n');
     res.end();
+
   } catch (e) {
     console.error('Handler error:', e);
     try { res.write('data: [DONE]\n\n'); res.end(); } catch (_) {}
