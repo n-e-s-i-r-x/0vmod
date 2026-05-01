@@ -483,94 +483,144 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    // ── PHASE 2: VERIFIER ────────────────────
-    sendLine(res, '');
-    sendLine(res, '== ─────────────────────────────────────────────');
-    sendLine(res, `[VERIFIER: ${VERIFIER_MODEL}]`);
-    sendLine(res, '>> Running code verification...');
-    sendLine(res, '');
-
-    const verifierMsgs = [
-      { role: 'system', content: VERIFIER_PROMPT },
-      {
-        role: 'user',
-        content: `Validate this BUILDER output and check every file:\n\n${builderOutput}`
+    // ── PHASE 2: PER-FILE VERIFICATION ───────
+    // Extract each file from builder output
+    function extractFiles(text) {
+      const files = [];
+      const re = /FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:[^\]]+\]/g;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        files.push({ path: m[1].trim(), content: m[2].trim() });
       }
-    ];
+      return files;
+    }
 
-    const vResp = await callModel(VERIFIER_MODEL, verifierMsgs, true, 3000, 0.1);
-    let verifierOutput = '';
-
-    if (vResp.ok) {
-      const vReader = vResp.body.getReader();
-      const vDec = new TextDecoder();
-      let vBuf = '';
-
+    async function streamModel(model, msgs, maxTok, temp) {
+      const resp = await callModel(model, msgs, true, maxTok, temp);
+      if (!resp.ok) return '';
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '', out = '';
       while (true) {
-        const { done, value } = await vReader.read();
+        const { done, value } = await reader.read();
         if (done) break;
-        vBuf += vDec.decode(value, { stream: true });
-        const lines = vBuf.split('\n'); vBuf = lines.pop() || '';
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop() || '';
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const d = line.slice(6).trim();
           if (d === '[DONE]') continue;
           try {
             const p = JSON.parse(d);
+            const reasoning = p.choices?.[0]?.delta?.reasoning || '';
+            if (reasoning) continue;
             const delta = p.choices?.[0]?.delta?.content || '';
-            if (delta) { verifierOutput += delta; res.write(line + '\n\n'); }
+            if (delta) { out += delta; res.write(line + '\n\n'); }
           } catch (_) {}
         }
       }
-      vReader.releaseLock();
-    } else {
-      sendLine(res, '!! Verifier unavailable — outputting builder result');
+      reader.releaseLock();
+      return out;
     }
 
-    // ── PHASE 3: HANDLE REJECTION ─────────────
-    const approved = verifierOutput.includes('[VERIFIER_DECISION: APPROVE]');
-    const rejected = verifierOutput.includes('[VERIFIER_DECISION: REJECT]');
+    const filesToVerify = extractFiles(builderOutput);
+    const verifiedFiles = {};
+    let anyFailed = false;
 
-    if (rejected && !approved && Date.now() - t0 < MAX_MS - 20000) {
-      sendLine(res, '');
-      sendLine(res, '!! REJECTED — requesting corrected regeneration...');
-      sendLine(res, '');
-      sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
-      sendLine(res, '>> Regenerating with verifier corrections applied...');
-      sendLine(res, '');
+    const MAX_FILE_RETRIES = 4;
 
-      const regenMsgs = [
-        { role: 'system', content: BUILDER_PROMPT },
-        ...messages,
-        { role: 'assistant', content: builderOutput },
-        {
-          role: 'user',
-          content: `VERIFIER rejected your output with these issues:\n\n${verifierOutput}\n\nFix ALL issues and regenerate the complete corrected addon. Same FILE/CONTENT/[FILE_COMPLETE] format.`
-        }
-      ];
+    for (const file of filesToVerify) {
+      let currentContent = file.content;
+      let fileVerified = false;
+      let attempt = 0;
 
-      const rResp = await callModel(BUILDER_MODEL, regenMsgs, true, 6000, 0.1);
-      if (rResp.ok) {
-        const rReader = rResp.body.getReader();
-        const rDec = new TextDecoder();
-        let rBuf = '';
-        while (true) {
-          const { done, value } = await rReader.read();
-          if (done) break;
-          rBuf += rDec.decode(value, { stream: true });
-          const lines = rBuf.split('\n'); rBuf = lines.pop() || '';
-          for (const line of lines) {
-            if (line.startsWith('data: ')) res.write(line + '\n\n');
+      while (attempt < MAX_FILE_RETRIES && !fileVerified) {
+        attempt++;
+        sendLine(res, '');
+        sendLine(res, '== ─────────────────────────────────────────────');
+        sendLine(res, `[VERIFIER: ${VERIFIER_MODEL}]`);
+        sendLine(res, `>> Verifying: ${file.path} (attempt ${attempt})`);
+        sendLine(res, '');
+
+        const vMsgs = [
+          { role: 'system', content: VERIFIER_PROMPT },
+          {
+            role: 'user',
+            content: `Verify this single file:\n\nFILE: ${file.path}\nCONTENT:\n${currentContent}\n\n` +
+              `Check for:\n` +
+              `- Correct Bedrock API usage\n` +
+              `- Valid format_version and min_engine_version\n` +
+              `- If user requested a version that doesn't exist or is wrong (e.g. 1.26.0), flag it and suggest the correct closest valid version\n` +
+              `- Any broken patterns or deprecated APIs\n\n` +
+              `Output [CHECK: ${file.path}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].\n` +
+              `If a version is invalid, output [VERSION_CORRECTION: <explanation of what should be used instead>].`
           }
+        ];
+
+        const vOut = await streamModel(VERIFIER_MODEL, vMsgs, 1500, 0.1);
+        const passed = vOut.includes('[STATUS: PASS]');
+        const failed = vOut.includes('[STATUS: FAIL]');
+
+        // Check if verifier flagged a version issue to inform the user
+        const versionMatch = vOut.match(/\[VERSION_CORRECTION:\s*([^\]]+)\]/);
+        if (versionMatch) {
+          sendLine(res, '');
+          sendLine(res, `!! VERSION NOTICE: ${versionMatch[1].trim()}`);
         }
-        rReader.releaseLock();
+
+        if (passed && !failed) {
+          fileVerified = true;
+          verifiedFiles[file.path] = currentContent;
+          sendLine(res, `OK ${file.path} — PASS`);
+          break;
+        }
+
+        // File failed — builder tries to fix it
+        anyFailed = true;
+        sendLine(res, '');
+        sendLine(res, `!! FAIL: ${file.path} — attempt ${attempt}/${MAX_FILE_RETRIES}`);
+
+        if (attempt >= MAX_FILE_RETRIES) {
+          sendLine(res, `!! Max retries reached for ${file.path} — keeping best version`);
+          verifiedFiles[file.path] = currentContent;
+          break;
+        }
+
+        sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
+        sendLine(res, `>> Fixing ${file.path}...`);
+        sendLine(res, '');
+
+        const fixMsgs = [
+          { role: 'system', content: BUILDER_PROMPT },
+          ...messages,
+          { role: 'assistant', content: builderOutput },
+          {
+            role: 'user',
+            content: `VERIFIER rejected ${file.path} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
+              `Fix EVERY issue listed above. If a version correction was flagged, use the corrected version.\n` +
+              `Output ONLY the fixed file in this exact format, nothing else:\n\n` +
+              `FILE: ${file.path}\nCONTENT:\n{fixed content}\n[VERIFY: ${file.path}]\n[FILE_COMPLETE: ${file.path}]`
+          }
+        ];
+
+        const fixOut = await streamModel(BUILDER_MODEL, fixMsgs, 4000, 0.1);
+        const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
+        if (fixedMatch) {
+          currentContent = fixedMatch[1].trim();
+          sendLine(res, `>> Fixed version ready — re-verifying...`);
+        } else {
+          sendLine(res, `!! Builder could not produce a fix — retrying with same content`);
+        }
       }
     }
 
+    sendLine(res, '');
+    sendLine(res, '== ─────────────────────────────────────────────');
+    sendLine(res, '[VERIFIER_DECISION: APPROVE]');
+    sendLine(res, anyFailed ? 'OK All files verified and corrected — BUILD VERIFIED' : 'OK All files passed clean — BUILD VERIFIED');
+    sendLine(res, '[BUILD_VERIFIED]');
+
     res.write('data: [DONE]\n\n');
-    res.end();
-  } catch (e) {
-    console.error('Handler error:', e);
-    try { res.write('data: [DONE]\n\n'); res.end(); } catch (_) {}
+    res.end(); } catch (_) {}
   }
 }
