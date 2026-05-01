@@ -3,9 +3,6 @@ import { search } from './search.js';
 const BUILDER_MODEL  = 'z-ai/glm-4.5-air:free';
 const VERIFIER_MODEL = 'z-ai/glm-4.5-air:free';
 
-// ─────────────────────────────────────────────
-// BUILDER SYSTEM PROMPT
-// ─────────────────────────────────────────────
 const BUILDER_PROMPT = `You are BUILDER — a Minecraft Bedrock Edition Addon code generator and assistant. Current date: ${new Date().toISOString().split('T')[0]}.
 
 You operate inside a dual-model pipeline:
@@ -277,9 +274,6 @@ Prefixes:
   !!  warning or fix needed
   ==  separator line`;
 
-// ─────────────────────────────────────────────
-// VERIFIER SYSTEM PROMPT
-// ─────────────────────────────────────────────
 const VERIFIER_PROMPT = `You are VERIFIER — a Minecraft Bedrock Edition addon validator.
 You are the final authority. No code reaches the user without your approval.
 
@@ -366,21 +360,21 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
 
 function makeThinkStripper() {
   let insideThink = false;
-  let buf = '';
+  let pending = '';
   return function strip(chunk) {
-    buf += chunk;
+    pending += chunk;
     let out = '';
-    while (buf.length > 0) {
+    while (pending.length > 0) {
       if (insideThink) {
-        const end = buf.indexOf('</think>');
-        if (end === -1) { buf = ''; return out; }
-        buf = buf.slice(end + 8);
+        const end = pending.indexOf('</think>');
+        if (end === -1) { pending = ''; return out; }
+        pending = pending.slice(end + 8);
         insideThink = false;
       } else {
-        const start = buf.indexOf('<think>');
-        if (start === -1) { out += buf; buf = ''; return out; }
-        out += buf.slice(0, start);
-        buf = buf.slice(start + 7);
+        const start = pending.indexOf('<think>');
+        if (start === -1) { out += pending; pending = ''; return out; }
+        out += pending.slice(0, start);
+        pending = pending.slice(start + 7);
         insideThink = true;
       }
     }
@@ -392,6 +386,130 @@ function sendSSE(res, content) {
   res.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
 }
 function sendLine(res, text) { sendSSE(res, text + '\n'); }
+
+// ─────────────────────────────────────────────
+// streamModel — used by verifier and fixer
+// ─────────────────────────────────────────────
+async function streamModel(res, model, msgs, maxTok, temp) {
+  const resp = await callModel(model, msgs, true, maxTok, temp);
+  if (!resp.ok) return '';
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', out = '';
+  const stripThink = makeThinkStripper();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n'); buf = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const d = line.slice(6).trim();
+      if (d === '[DONE]') continue;
+      try {
+        const p = JSON.parse(d);
+        const reasoning = p.choices?.[0]?.delta?.reasoning || '';
+        if (reasoning) continue;
+        const delta = p.choices?.[0]?.delta?.content
+          ?? p.choices?.[0]?.message?.content
+          ?? '';
+        if (delta) {
+          const clean = stripThink(delta);
+          if (!clean) continue;
+          out += clean;
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
+        }
+      } catch (_) {}
+    }
+  }
+  reader.releaseLock();
+  return out;
+}
+
+// ─────────────────────────────────────────────
+// verifyFile — verify one file, retry up to MAX_FILE_RETRIES
+// ─────────────────────────────────────────────
+async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
+  const MAX_FILE_RETRIES = 4;
+  let currentContent = initialContent;
+  let fileVerified = false;
+  let attempt = 0;
+
+  while (attempt < MAX_FILE_RETRIES && !fileVerified) {
+    attempt++;
+    sendLine(res, '');
+    sendLine(res, '== ─────────────────────────────────────────────');
+    sendLine(res, `[VERIFIER: ${VERIFIER_MODEL}]`);
+    sendLine(res, `>> Verifying: ${filePath} (attempt ${attempt})`);
+    sendLine(res, '');
+
+    const vMsgs = [
+      { role: 'system', content: VERIFIER_PROMPT },
+      {
+        role: 'user',
+        content: `Verify this single file:\n\nFILE: ${filePath}\nCONTENT:\n${currentContent}\n\n` +
+          `Check for:\n` +
+          `- Correct Bedrock API usage\n` +
+          `- Valid format_version and min_engine_version\n` +
+          `- If version is wrong or nonexistent (e.g. 1.26.0), flag it with [VERSION_CORRECTION: explanation]\n` +
+          `- Any broken patterns or deprecated APIs\n\n` +
+          `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
+      }
+    ];
+
+    const vOut = await streamModel(res, VERIFIER_MODEL, vMsgs, 1500, 0.1);
+    const passed = vOut.includes('[STATUS: PASS]');
+    const failed = vOut.includes('[STATUS: FAIL]');
+
+    const versionMatch = vOut.match(/\[VERSION_CORRECTION:\s*([^\]]+)\]/);
+    if (versionMatch) {
+      sendLine(res, '');
+      sendLine(res, `!! VERSION NOTICE: ${versionMatch[1].trim()}`);
+    }
+
+    if (passed && !failed) {
+      fileVerified = true;
+      sendLine(res, `OK ${filePath} — PASS`);
+      return { verified: true, content: currentContent };
+    }
+
+    sendLine(res, '');
+    sendLine(res, `!! FAIL: ${filePath} — attempt ${attempt}/${MAX_FILE_RETRIES}`);
+
+    if (attempt >= MAX_FILE_RETRIES) {
+      sendLine(res, `!! Max retries reached for ${filePath} — keeping best version`);
+      return { verified: false, content: currentContent };
+    }
+
+    sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
+    sendLine(res, `>> Fixing ${filePath}...`);
+    sendLine(res, '');
+
+    const fixMsgs = [
+      { role: 'system', content: BUILDER_PROMPT },
+      ...messages,
+      { role: 'assistant', content: builderOutput },
+      {
+        role: 'user',
+        content: `VERIFIER rejected ${filePath} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
+          `Fix EVERY issue. If a version correction was flagged, use the corrected version.\n` +
+          `Output ONLY the fixed file in this exact format:\n\n` +
+          `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[VERIFY: ${filePath}]\n[FILE_COMPLETE: ${filePath}]`
+      }
+    ];
+
+    const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4000, 0.1);
+    const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
+    if (fixedMatch) {
+      currentContent = fixedMatch[1].trim();
+      sendLine(res, `>> Fixed — re-verifying...`);
+    } else {
+      sendLine(res, `!! Builder could not produce a fix — retrying`);
+    }
+  }
+
+  return { verified: false, content: currentContent };
+}
 
 // ─────────────────────────────────────────────
 // MAIN HANDLER
@@ -421,9 +539,9 @@ export default async function handler(req, res) {
   const builderMsgs = [{ role: 'system', content: BUILDER_PROMPT }, ...messages];
 
   try {
-    // ── PHASE 1: BUILDER ─────────────────────
     let builderOutput = '';
     let round = 0;
+    let anyFailed = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
       const resp = await callModel(BUILDER_MODEL, builderMsgs, true, isModMode ? 6000 : 1024, isModMode ? 0.15 : 0.6);
@@ -476,95 +594,21 @@ export default async function handler(req, res) {
       reader.cancel().catch(() => {});
       builderOutput += accumulated;
 
-      // ── INLINE PER-FILE VERIFY DURING STREAMING ──
-      const justCompleted = accumulated.match(/\[FILE_COMPLETE:\s*([^\]]+)\]/g);
-      if (justCompleted) {
-        for (const tag of justCompleted) {
+      // ── INLINE PER-FILE VERIFY AS EACH FILE COMPLETES ──
+      const completedTags = accumulated.match(/\[FILE_COMPLETE:\s*[^\]]+\]/g);
+      if (completedTags) {
+        for (const tag of completedTags) {
           const filePath = tag.replace(/\[FILE_COMPLETE:\s*/, '').replace(/\]$/, '').trim();
+          const escaped = filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const fileMatch = builderOutput.match(
-            new RegExp(`FILE:\\s*${filePath.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
+            new RegExp(`FILE:\\s*${escaped}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
           );
           if (!fileMatch) continue;
 
-          let currentContent = fileMatch[1].trim();
-          let fileVerified = false;
-          let attempt = 0;
-          const MAX_FILE_RETRIES = 4;
-
-          while (attempt < MAX_FILE_RETRIES && !fileVerified) {
-            attempt++;
-            sendLine(res, '');
-            sendLine(res, '== ─────────────────────────────────────────────');
-            sendLine(res, `[VERIFIER: ${VERIFIER_MODEL}]`);
-            sendLine(res, `>> Verifying: ${filePath} (attempt ${attempt})`);
-            sendLine(res, '');
-
-            const vMsgs = [
-              { role: 'system', content: VERIFIER_PROMPT },
-              {
-                role: 'user',
-                content: `Verify this single file:\n\nFILE: ${filePath}\nCONTENT:\n${currentContent}\n\n` +
-                  `Check for:\n` +
-                  `- Correct Bedrock API usage\n` +
-                  `- Valid format_version and min_engine_version\n` +
-                  `- If version is wrong or nonexistent (e.g. 1.26.0), flag it with [VERSION_CORRECTION: explanation]\n` +
-                  `- Any broken patterns or deprecated APIs\n\n` +
-                  `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
-              }
-            ];
-
-            const vOut = await streamModel(VERIFIER_MODEL, vMsgs, 1500, 0.1);
-            const passed = vOut.includes('[STATUS: PASS]');
-            const failed = vOut.includes('[STATUS: FAIL]');
-
-            const versionMatch = vOut.match(/\[VERSION_CORRECTION:\s*([^\]]+)\]/);
-            if (versionMatch) {
-              sendLine(res, '');
-              sendLine(res, `!! VERSION NOTICE: ${versionMatch[1].trim()}`);
-            }
-
-            if (passed && !failed) {
-              fileVerified = true;
-              sendLine(res, `OK ${filePath} — PASS`);
-              break;
-            }
-
-            sendLine(res, '');
-            sendLine(res, `!! FAIL: ${filePath} — attempt ${attempt}/${MAX_FILE_RETRIES}`);
-
-            if (attempt >= MAX_FILE_RETRIES) {
-              sendLine(res, `!! Max retries reached for ${filePath} — keeping best version`);
-              break;
-            }
-
-            sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
-            sendLine(res, `>> Fixing ${filePath}...`);
-            sendLine(res, '');
-
-            const fixMsgs = [
-              { role: 'system', content: BUILDER_PROMPT },
-              ...messages,
-              { role: 'assistant', content: builderOutput },
-              {
-                role: 'user',
-                content: `VERIFIER rejected ${filePath} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
-                  `Fix EVERY issue. If a version correction was flagged, use the corrected version.\n` +
-                  `Output ONLY the fixed file in this exact format:\n\n` +
-                  `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[VERIFY: ${filePath}]\n[FILE_COMPLETE: ${filePath}]`
-              }
-            ];
-
-            const fixOut = await streamModel(BUILDER_MODEL, fixMsgs, 4000, 0.1);
-            const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
-            if (fixedMatch) {
-              currentContent = fixedMatch[1].trim();
-              // patch builderOutput with fixed content so final zip uses corrected file
-              builderOutput = builderOutput.replace(fileMatch[1], currentContent);
-              sendLine(res, `>> Fixed — re-verifying...`);
-            } else {
-              sendLine(res, `!! Builder could not produce a fix — retrying`);
-            }
-          }
+          const result = await verifyFile(res, messages, filePath, fileMatch[1].trim(), builderOutput);
+          if (!result.verified) anyFailed = true;
+          // patch builderOutput so zip gets the fixed version
+          builderOutput = builderOutput.replace(fileMatch[1], result.content + '\n');
         }
       }
 
@@ -593,62 +637,14 @@ export default async function handler(req, res) {
       break;
     }
 
-    // Detect if builder produced files or just asked questions
+    // If no build — just a clarification or chat response — end here
     const hasBuildComplete = builderOutput.includes('[BUILD_COMPLETE]');
     const hasFiles = /FILE:\s*\S/.test(builderOutput);
-
-    // If no build — just a clarification or chat response — end here
     if (!hasBuildComplete || !hasFiles) {
       res.write('data: [DONE]\n\n');
       return res.end();
     }
 
-    // ── PHASE 2: FINAL SUMMARY ───────
-    function extractFiles(text) {
-      const files = [];
-      const re = /FILE:\s*([^\n]+)\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:[^\]]+\]/g;
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        files.push({ path: m[1].trim(), content: m[2].trim() });
-      }
-      return files;
-    }
-
-    async function streamModel(model, msgs, maxTok, temp) {
-      const resp = await callModel(model, msgs, true, maxTok, temp);
-      if (!resp.ok) return '';
-      const reader = resp.body.getReader();
-      const dec = new TextDecoder();
-      let buf = '', out = '';
-      const stripThink = makeThinkStripper();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n'); buf = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const d = line.slice(6).trim();
-          if (d === '[DONE]') continue;
-          try {
-            const p = JSON.parse(d);
-            const reasoning = p.choices?.[0]?.delta?.reasoning || '';
-            if (reasoning) continue;
-            const delta = p.choices?.[0]?.delta?.content
-              ?? p.choices?.[0]?.message?.content
-              ?? '';
-            if (delta) {
-              const clean = stripThink(delta);
-              if (!clean) continue;
-              out += clean;
-              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
-            }
-          } catch (_) {}
-        }
-      }
-      reader.releaseLock();
-      return out;
-    }
     sendLine(res, '');
     sendLine(res, '== ─────────────────────────────────────────────');
     sendLine(res, '[VERIFIER_DECISION: APPROVE]');
