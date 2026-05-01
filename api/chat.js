@@ -644,8 +644,8 @@ export default async function handler(req, res) {
           builderOutput = builderOutput.replace(fileMatch[1], result.content + '\n');
         }
         // Resume builder: push full builderOutput as assistant context so it knows all files written so far
-        builderMsgs.push({ role: 'assistant', content: builderOutput });
-        builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format. Do NOT re-output files already written.' });
+        builderMsgs.push({ role: 'assistant', content: accumulated });
+builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format. Do NOT re-output files already written.' });
         fileCompleteTag = null;
         round++;
         continue;
