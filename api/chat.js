@@ -364,6 +364,10 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
   });
 }
 
+function stripThink(text) {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+}
+
 function sendSSE(res, content) {
   res.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
 }
@@ -431,12 +435,16 @@ export default async function handler(req, res) {
           if (d === '[DONE]') break outer;
           try {
             const p = JSON.parse(d);
-            const delta = p.choices?.[0]?.delta?.content || '';
             const reasoning = p.choices?.[0]?.delta?.reasoning || '';
             if (reasoning) continue;
+            const delta = p.choices?.[0]?.delta?.content
+              ?? p.choices?.[0]?.message?.content
+              ?? '';
             if (delta) {
-              accumulated += delta;
-              res.write(line + '\n\n');
+              const clean = stripThink(delta);
+              if (!clean) continue;
+              accumulated += clean;
+              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
               const sm = accumulated.match(/\[SEARCH:\s*([^\]]+)\]$/);
               if (sm) { searchQuery = sm[1].trim(); break outer; }
             }
@@ -513,7 +521,9 @@ export default async function handler(req, res) {
             const p = JSON.parse(d);
             const reasoning = p.choices?.[0]?.delta?.reasoning || '';
             if (reasoning) continue;
-            const delta = p.choices?.[0]?.delta?.content || '';
+            const delta = p.choices?.[0]?.delta?.content
+              ?? p.choices?.[0]?.message?.content
+              ?? '';
             if (delta) { out += delta; res.write(line + '\n\n'); }
           } catch (_) {}
         }
