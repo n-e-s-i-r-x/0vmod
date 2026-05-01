@@ -843,16 +843,9 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    // ── Rebuild canonical file output into builderOutput for frontend parseFiles ──
-    // The frontend reads FILE:/CONTENT:/FILE_COMPLETE: blocks to build the zip
-    // We reconstruct them from fileRegistry so verified/fixed content is used
+    // ── Send file registry as silent metadata event for frontend zip building ──
     if (hasFiles) {
-      let canonical = '\n';
-      for (const [path, content] of Object.entries(fileRegistry)) {
-        canonical += `FILE: ${path}\nCONTENT:\n${content}\n[FILE_COMPLETE: ${path}]\n`;
-      }
-      // Append canonical blocks so parseFiles() in frontend finds them
-      sendSSE(res, canonical);
+      res.write(`data: ${JSON.stringify({ type: 'file_registry', files: fileRegistry })}\n\n`);
     }
 
     sendLine(res, '');
