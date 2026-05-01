@@ -283,7 +283,7 @@ VALIDATION CHECKLIST (check ALL items)
 
 manifest.json:
 [ ] format_version is integer 2 (not string "2")
-[ ] All UUIDs are valid unique v4 format (not placeholder text)
+[ ] All UUIDs are valid unique v4 format (not placeholder text like xxxxxxxx)
 [ ] min_engine_version is integer array [1, 21, 0]
 [ ] Script module present if JS files are included
 [ ] dependencies include @minecraft/server 1.15.0 if scripted
@@ -308,9 +308,14 @@ JS scripts:
 [ ] system.runInterval used correctly
 
 General:
-[ ] All JSON is syntactically valid (no trailing commas, balanced)
+[ ] All JSON is syntactically valid (no trailing commas, balanced brackets)
 [ ] No literal placeholder text like <uuid> or YOUR_UUID_HERE remains
 [ ] All referenced files actually exist in the build
+[ ] No [VERIFY:...] or [FILE_COMPLETE:...] tags appear inside file content
+
+If you are uncertain about a component or API pattern, output:
+[SEARCH: your query here]
+Then stop and wait for search results before continuing your verdict.
 
 ════════════════════════════════════════
 YOUR OUTPUT FORMAT
@@ -430,6 +435,7 @@ async function streamModel(res, model, msgs, maxTok, temp) {
 // ─────────────────────────────────────────────
 async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
   const MAX_FILE_RETRIES = 4;
+  const MAX_VERIFY_SEARCHES = 3;
   let currentContent = initialContent;
   let fileVerified = false;
   let attempt = 0;
@@ -442,7 +448,10 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     sendLine(res, `>> Verifying: ${filePath} (attempt ${attempt})`);
     sendLine(res, '');
 
-    const vMsgs = [
+    // ── Verifier with optional search loop ──
+    let vOut = '';
+    let vSearches = 0;
+    const vMsgsBase = [
       { role: 'system', content: VERIFIER_PROMPT },
       {
         role: 'user',
@@ -451,12 +460,35 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
           `- Correct Bedrock API usage\n` +
           `- Valid format_version and min_engine_version\n` +
           `- If version is wrong or nonexistent (e.g. 1.26.0), flag it with [VERSION_CORRECTION: explanation]\n` +
-          `- Any broken patterns or deprecated APIs\n\n` +
+          `- Any broken patterns or deprecated APIs\n` +
+          `- [VERIFY:...] or [FILE_COMPLETE:...] tags inside file content (always FAIL if present)\n\n` +
           `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
       }
     ];
+    const vMsgs = [...vMsgsBase];
 
-    const vOut = await streamModel(res, VERIFIER_MODEL, vMsgs, 1500, 0.1);
+    while (vSearches <= MAX_VERIFY_SEARCHES) {
+      const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1500, 0.1);
+      vOut += chunk;
+
+      const searchMatch = vOut.match(/\[SEARCH:\s*([^\]]+)\]\s*$/);
+      if (searchMatch && vSearches < MAX_VERIFY_SEARCHES) {
+        vSearches++;
+        const q = searchMatch[1].trim();
+        sendLine(res, `>> Verifier searching: ${q}`);
+        let sr = { answer: null, results: [], source: 'none' };
+        try { sr = await search(q); } catch (_) {}
+        let ctx = `Search results for: ${q}\n`;
+        if (sr.answer) ctx += `Answer: ${sr.answer}\n`;
+        for (const r of sr.results) ctx += `[${r.url}]: ${r.snippet}\n`;
+        if (!sr.answer && !sr.results.length) ctx += 'No results found.\n';
+        vMsgs.push({ role: 'assistant', content: chunk });
+        vMsgs.push({ role: 'user', content: `Search results:\n\n${ctx}\n\nContinue your verification and output your [STATUS: PASS] or [STATUS: FAIL] verdict.` });
+        continue;
+      }
+      break;
+    }
+
     const passed = vOut.includes('[STATUS: PASS]');
     const failed = vOut.includes('[STATUS: FAIL]');
 
@@ -492,6 +524,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
         role: 'user',
         content: `VERIFIER rejected ${filePath} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
           `Fix EVERY issue. If a version correction was flagged, use the corrected version.\n` +
+          `Do NOT include [VERIFY:...] or [FILE_COMPLETE:...] tags inside the file content.\n` +
           `Output ONLY the fixed file in this exact format:\n\n` +
           `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[VERIFY: ${filePath}]\n[FILE_COMPLETE: ${filePath}]`
       }
@@ -500,7 +533,8 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4000, 0.1);
     const fixedMatch = fixOut.match(/FILE:\s*[^\n]+\nCONTENT:\n([\s\S]*?)\[FILE_COMPLETE:/);
     if (fixedMatch) {
-      currentContent = fixedMatch[1].trim();
+      // Strip any [VERIFY:] tags that leaked into content
+      currentContent = fixedMatch[1].trim().replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
       sendLine(res, `>> Fixed — re-verifying...`);
     } else {
       sendLine(res, `!! Builder could not produce a fix — retrying`);
@@ -582,10 +616,10 @@ export default async function handler(req, res) {
               if (!clean) continue;
               accumulated += clean;
               res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
-              const sm = accumulated.match(/\[SEARCH:\s*([^\]]+)\]$/);
+              const sm = accumulated.match(/\[SEARCH:\s*([^\]]+)\]\s*$/);
               if (sm) { searchQuery = sm[1].trim(); break outer; }
               // ── Pause after each FILE_COMPLETE so verifier runs immediately ──
-              const fcm = accumulated.match(/\[FILE_COMPLETE:\s*([^\]]+)\]$/);
+              const fcm = accumulated.match(/\[FILE_COMPLETE:\s*([^\]]+)\]\s*$/);
               if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
             }
           } catch (_) {}
@@ -603,13 +637,15 @@ export default async function handler(req, res) {
           new RegExp(`FILE:\\s*${escaped}\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:`)
         );
         if (fileMatch) {
-          const result = await verifyFile(res, messages, filePath, fileMatch[1].trim(), builderOutput);
+          // Strip [VERIFY:...] lines from file content before verifying/zipping
+          const cleanedContent = fileMatch[1].trim().replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
+          const result = await verifyFile(res, messages, filePath, cleanedContent, builderOutput);
           if (!result.verified) anyFailed = true;
           builderOutput = builderOutput.replace(fileMatch[1], result.content + '\n');
         }
-        // Resume builder with context of what was written so far
-        builderMsgs.push({ role: 'assistant', content: accumulated });
-        builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format.' });
+        // Resume builder: push full builderOutput as assistant context so it knows all files written so far
+        builderMsgs.push({ role: 'assistant', content: builderOutput });
+        builderMsgs.push({ role: 'user', content: 'File verified. Continue building the remaining files in the same format. Do NOT re-output files already written.' });
         fileCompleteTag = null;
         round++;
         continue;
