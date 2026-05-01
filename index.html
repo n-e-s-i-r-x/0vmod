@@ -552,9 +552,12 @@ async function streamResp(resp, bb, isT, signal) {
     parseFiles(full);
     const regenMatch = full.match(/\[BUILDER:[^\]]*\][\s\S]*$/);
     if (regenMatch) parseFiles(regenMatch[0]);
-    setTimeout(() => {
-      if (!signal?.aborted && Object.keys(S.files).length > 0) addDL(bb);
-    }, 100);
+    // Only show download after BUILD_COMPLETE — not mid-build
+    if (full.includes('[BUILD_COMPLETE]') || full.includes('[BUILD_VERIFIED]')) {
+      setTimeout(() => {
+        if (!signal?.aborted && Object.keys(S.files).length > 0) addDL(bb);
+      }, 100);
+    }
   }
   if (!signal?.aborted) S.msg.push({ role: 'assistant', content: full });
   scr();
@@ -617,6 +620,7 @@ function renderTerm(el, text, fin = false) {
       if (fO && fP) {
         html += fBlk(fP, fB.trim(), false);
         html += tl('OK ' + fP, 'cgr');
+        // Store file content but don't trigger download yet — wait for BUILD_COMPLETE
         S.files[fP] = fB.trim();
       }
       fO = cO = false; fP = fB = ''; continue;
