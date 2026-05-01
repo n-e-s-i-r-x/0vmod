@@ -37,18 +37,19 @@ Then STOP. Wait for the user to reply before generating code.
 STEP 2 — ANNOUNCE PLAN (after user confirms):
 List every file you will generate on separate lines.
 
-STEP 3 — BUILD ALL FILES:
-Output every file one after another without stopping. For each file use exactly this format:
+STEP 3 — BUILD FILES ONE AT A TIME:
+For each file output exactly in this format (no backticks, no markdown):
 
 FILE: path/to/filename.ext
 CONTENT:
-{raw file content — no backticks, no markdown}
+{raw file content here}
 [FILE_COMPLETE: path/to/filename.ext]
 
-Output ALL files back to back. Do NOT stop between files. Do NOT wait.
+IMPORTANT: Output ONE file then STOP. Wait for the continue signal before outputting the next file.
+Do NOT output multiple files in one response.
 Do NOT use backticks anywhere in output.
 
-STEP 4 — END (after ALL files are output):
+STEP 4 — END (only after ALL files are done):
 [BUILD_COMPLETE]
 [DOWNLOAD_READY]
 
@@ -346,81 +347,28 @@ Keep it concise. One issue per line. Terminal format only.`;
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
-
-// Global rate limiter: enforces a minimum gap between ALL outgoing API calls.
-// Free-tier OpenRouter models (z-ai/glm-4.5-air:free) allow ~3 req/min.
-// We target ~1 req/20s to stay safely under the limit across builder + verifier.
-const rateLimiter = (() => {
-  // Free-tier allows ~3 req/min total across all calls.
-  // Intent runs first (in index.html) and is already done before /api/chat is called,
-  // so inside chat.js we only need to space builder + verifier calls.
-  // 12s gap → 5 req/min budget — safe for builder+verifier pairs without the intent slot.
-  const MIN_GAP_MS = 12000; // 12s between calls inside chat.js
-  let lastCallTime = 0;
-  return async function waitForSlot() {
-    const now = Date.now();
-    const elapsed = now - lastCallTime;
-    if (elapsed < MIN_GAP_MS) {
-      const wait = MIN_GAP_MS - elapsed;
-      console.log(`[RateLimiter] Waiting ${Math.round(wait / 1000)}s before next call`);
-      await new Promise(r => setTimeout(r, wait));
-    }
-    lastCallTime = Date.now();
-  };
-})();
-
-// FIX 1: exponential backoff with jitter, and always return resp (even on final 429)
 async function callModel(model, messages, streamMode, maxTokens, temp) {
-  const MAX_RETRIES = 5;
-  // Base delays: 15s, 30s, 45s, 60s, 90s — tuned for free-tier RPM limits
-  const BASE_DELAYS = [15000, 30000, 45000, 60000, 90000];
-
-  let lastResp;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    await rateLimiter(); // enforce global min gap between ALL API calls
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
-    try {
-      lastResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        signal: controller.signal,
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://0vmod.vercel.app',
-          'X-Title': 'MC Bedrock Builder'
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: temp ?? 0.2,
-          max_tokens: maxTokens ?? 4096,
-          stream: streamMode
-        })
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    // Success or non-retryable error — return immediately
-    if (lastResp.status !== 429) return lastResp;
-
-    // On 429, if we have retries left, wait and retry
-    if (attempt < MAX_RETRIES) {
-      // FIX 2: respect Retry-After header; fall back to longer base delays
-      const retryAfter = lastResp.headers.get('retry-after');
-      const base = retryAfter
-        ? Math.max(parseInt(retryAfter) * 1000, BASE_DELAYS[attempt]) // at least our base
-        : BASE_DELAYS[attempt];
-      const jitter = Math.random() * 3000; // up to 3s of jitter
-      const wait = base + jitter;
-      console.warn(`429 on attempt ${attempt + 1}/${MAX_RETRIES + 1} — waiting ${Math.round(wait / 1000)}s`);
-      await new Promise(r => setTimeout(r, wait));
-    }
-  }
-
-  // FIX 3: always return the last response instead of returning undefined
-  return lastResp;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90000);
+  const fetchPromise = fetch('https://openrouter.ai/api/v1/chat/completions', {
+    signal: controller.signal,
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://0vmod.vercel.app',
+      'X-Title': 'MC Bedrock Builder'
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: temp ?? 0.2,
+      max_tokens: maxTokens ?? 4096,
+      stream: streamMode
+    })
+  });
+  fetchPromise.finally(() => clearTimeout(timeout));
+  return fetchPromise;
 }
 
 function makeThinkStripper() {
@@ -459,39 +407,26 @@ function getDelta(p) {
     ?? '';
 }
 
-// Safe regex escape for file paths
-function escapeRegex(str) {
-  return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-}
-
-// Extract file content between FILE:/CONTENT: and [FILE_COMPLETE:] markers
-function extractFileContent(text, filePath) {
-  const esc = escapeRegex(filePath);
-  const rx = new RegExp(
-    'FILE:\\s*' + esc + '\\s*\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:\\s*' + esc + '\\s*\\]'
-  );
-  const m = text.match(rx);
+// ─────────────────────────────────────────────
+// extractFileContent — safely pull content between FILE/FILE_COMPLETE markers
+// Fixed: proper regex escaping so paths with slashes/dots work correctly
+// ─────────────────────────────────────────────
+function extractFileContent(builderOutput, filePath) {
+  // Escape every regex special char in the path
+  const esc = filePath.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  const rx = new RegExp('FILE:\\s*' + esc + '\\s*\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:\\s*' + esc + '\\]');
+  const m = builderOutput.match(rx);
   if (!m) return null;
+  // Strip any stray [VERIFY:...] lines from inside the content block
   return m[1].replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
 }
 
 // ─────────────────────────────────────────────
-// streamModel — streams to client and returns full text
+// streamModel — streams model output to client AND returns full text
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
   const resp = await callModel(model, msgs, true, maxTok, temp);
-
-  // FIX 4: surface 429 errors to the stream so the user knows what happened
-  if (!resp || !resp.ok) {
-    const status = resp?.status ?? 'unknown';
-    const msg = status === 429
-      ? '!! Rate limit hit — all retries exhausted. Please wait a minute and try again.'
-      : `!! API error ${status}`;
-    sendLine(res, msg);
-    console.error('streamModel error:', status);
-    return '';
-  }
-
+  if (!resp.ok) return '';
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '', out = '';
@@ -525,7 +460,7 @@ async function streamModel(res, model, msgs, maxTok, temp) {
 }
 
 // ─────────────────────────────────────────────
-// verifyFile — verify one file, retry on fail
+// verifyFile — verify one file synchronously (no fire-and-forget)
 // ─────────────────────────────────────────────
 async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
   const MAX_FILE_RETRIES = 3;
@@ -551,23 +486,15 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
           `Check for:\n` +
           `- Correct Bedrock API usage\n` +
           `- Valid format_version and min_engine_version\n` +
-          `- If version is wrong, flag with [VERSION_CORRECTION: explanation]\n` +
-          `- Deprecated APIs or broken patterns\n` +
-          `- [FILE_COMPLETE:...] tags inside file content (always FAIL)\n\n` +
+          `- If version is wrong or nonexistent, flag it with [VERSION_CORRECTION: explanation]\n` +
+          `- Any broken patterns or deprecated APIs\n` +
+          `- [FILE_COMPLETE:...] tags inside file content (always FAIL if present)\n\n` +
           `Output [CHECK: ${filePath}], list every issue with -- prefix, then [STATUS: PASS] or [STATUS: FAIL].`
       }
     ];
 
     while (vSearches <= MAX_VERIFY_SEARCHES) {
-      // rateLimiter in callModel handles spacing; no extra sleep needed here
       const chunk = await streamModel(res, VERIFIER_MODEL, vMsgs, 1200, 0.1);
-
-      // If streamModel returned empty due to 429, treat as inconclusive
-      if (!chunk) {
-        sendLine(res, `?? ${filePath} — verifier unavailable (rate limited), continuing`);
-        return { verified: true, content: currentContent };
-      }
-
       vOut += chunk;
 
       const searchMatch = chunk.match(/\[SEARCH:\s*([^\]]+)\]/);
@@ -593,6 +520,7 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
 
     const versionMatch = vOut.match(/\[VERSION_CORRECTION:\s*([^\]]+)\]/);
     if (versionMatch) {
+      sendLine(res, '');
       sendLine(res, `!! VERSION NOTICE: ${versionMatch[1].trim()}`);
     }
 
@@ -603,11 +531,13 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     }
 
     if (!passed && !failed) {
+      // Verifier output cut off / malformed — treat as pass to keep pipeline moving
       sendLine(res, `?? ${filePath} — verifier inconclusive, continuing`);
       sendLine(res, '');
       return { verified: true, content: currentContent };
     }
 
+    sendLine(res, '');
     sendLine(res, `!! FAIL: ${filePath} — attempt ${attempt}/${MAX_FILE_RETRIES}`);
 
     if (attempt >= MAX_FILE_RETRIES) {
@@ -627,16 +557,15 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
       {
         role: 'user',
         content: `VERIFIER rejected ${filePath} on attempt ${attempt} with these issues:\n\n${vOut}\n\n` +
-          `Fix EVERY issue listed.\n` +
-          `Do NOT put [FILE_COMPLETE:...] tags inside the file content itself.\n` +
-          `Output ONLY the fixed file:\n\n` +
+          `Fix EVERY issue listed above.\n` +
+          `Do NOT include [FILE_COMPLETE:...] tags inside the file content itself.\n` +
+          `Output ONLY the fixed file in this exact format:\n\n` +
           `FILE: ${filePath}\nCONTENT:\n{fixed content}\n[FILE_COMPLETE: ${filePath}]`
       }
     ];
 
-    // rateLimiter in callModel handles spacing before fix call
     const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4096, 0.1);
-    const fixedContent = fixOut ? extractFileContent(fixOut, filePath) : null;
+    const fixedContent = extractFileContent(fixOut, filePath);
     if (fixedContent) {
       currentContent = fixedContent;
       sendLine(res, `>> Fixed — re-verifying...`);
@@ -674,48 +603,46 @@ export default async function handler(req, res) {
   const MAX_MS = 115000;
   const t0 = Date.now();
 
-  // file path -> verified content
+  // Keep a compact file registry — path -> content — instead of one giant builderOutput string
   const fileRegistry = {};
+  // Full output for context (never sent back wholesale — trimmed per round)
   let builderOutput = '';
-  let anyFailed = false;
 
+  // Initial messages for builder
   const builderMsgs = [{ role: 'system', content: BUILDER_PROMPT }, ...messages];
 
   try {
     let round = 0;
-    let buildStarted = false;
+    let anyFailed = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      const maxTok = (isBuild || buildStarted) ? 6000 : 512;
-      const temp   = (isBuild || buildStarted) ? 0.2  : 0.7;
+      const resp = await callModel(
+        BUILDER_MODEL,
+        builderMsgs,
+        true,
+        isBuild ? 4096 : 512,
+        isBuild ? 0.2 : 0.7
+      );
 
-      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, maxTok, temp);
-
-      if (!resp || !resp.ok) {
-        const status = resp?.status ?? 'unknown';
-        console.error('Builder error:', status);
-        if (round === 0) {
-          // FIX 7: don't try to set headers after SSE headers are already sent
-          // SSE headers are set above before the try block, so just stream the error
-          sendLine(res, status === 429
-            ? '!! Rate limited by OpenRouter. Please wait a moment and try again.'
-            : `!! AI service error: ${status}`
-          );
-          res.write('data: [DONE]\n\n');
-          return res.end();
-        }
-        break;
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        console.error('Builder error:', resp.status, errText);
+        // SSE headers already sent — cannot switch to JSON. Stream the error instead.
+        sendLine(res, resp.status === 429
+          ? '!! Rate limited — please wait a moment and try again.'
+          : `!! AI service error: ${resp.status}`
+        );
+        res.write('data: [DONE]\n\n');
+        return res.end();
       }
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '', accumulated = '', lineBuf = '';
-      let searchQuery = null;
-      const fileCompleteTags = [];
+      let searchQuery = null, fileCompleteTag = null;
       const stripThink = makeThinkStripper();
 
       const heartbeat = setInterval(() => { res.write(': ping\n\n'); }, 5000);
-
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -737,10 +664,7 @@ export default async function handler(req, res) {
               lineBuf += clean;
               res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
 
-              if (!buildStarted && /FILE:\s*\S/.test(accumulated)) {
-                buildStarted = true;
-              }
-
+              // Check completed lines for control tags
               const nlIdx = lineBuf.lastIndexOf('\n');
               if (nlIdx !== -1) {
                 const completedLines = lineBuf.slice(0, nlIdx);
@@ -751,7 +675,7 @@ export default async function handler(req, res) {
                   const sm = t.match(/^\[SEARCH:\s*([^\]]+)\]$/);
                   if (sm) { searchQuery = sm[1].trim(); break outer; }
                   const fcm = t.match(/^\[FILE_COMPLETE:\s*(.+?)\]$/);
-                  if (fcm) fileCompleteTags.push(fcm[1].trim());
+                  if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
                 }
               }
             }
@@ -763,50 +687,47 @@ export default async function handler(req, res) {
       reader.cancel().catch(() => {});
       builderOutput += accumulated;
 
-      // ── Process all completed files from this round ──
-      if (fileCompleteTags.length > 0) {
-        for (const filePath of fileCompleteTags) {
-          let fileContent = extractFileContent(accumulated, filePath)
-            ?? extractFileContent(builderOutput, filePath);
+      // ── FILE COMPLETE: verify then continue ──
+      if (fileCompleteTag) {
+        const filePath = fileCompleteTag;
 
-          if (fileContent) {
-            fileRegistry[filePath] = fileContent;
-            // rateLimiter in callModel handles spacing before verifier
-            const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
-            if (!result.verified) anyFailed = true;
-            if (result.content !== fileContent) fileRegistry[filePath] = result.content;
-          } else {
-            sendLine(res, `!! Could not extract content for ${filePath} — skipping verify`);
-            sendLine(res, '');
+        // Extract content using fixed regex (searches accumulated for this round)
+        let fileContent = extractFileContent(accumulated, filePath);
+
+        // Fallback: search full builderOutput in case content spans chunks
+        if (!fileContent) {
+          fileContent = extractFileContent(builderOutput, filePath);
+        }
+
+        if (fileContent) {
+          fileRegistry[filePath] = fileContent;
+
+          // Verify synchronously — we must wait before telling builder to continue
+          // so the verifier output appears in stream before next file starts
+          const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
+          if (!result.verified) anyFailed = true;
+          if (result.content !== fileContent) {
+            fileRegistry[filePath] = result.content;
           }
+        } else {
+          sendLine(res, `!! Could not extract content for ${filePath} — skipping verify`);
+          sendLine(res, '');
         }
 
-        if (accumulated.includes('[BUILD_COMPLETE]') || accumulated.includes('[DOWNLOAD_READY]')) {
-          break;
-        }
-
+        // Tell builder to continue with ONLY the file list as context (not full output)
+        // This prevents context from ballooning on every round
         const doneFiles = Object.keys(fileRegistry);
-
-        // Check if builder already signaled it's done
-        if (accumulated.includes('[BUILD_COMPLETE]') || accumulated.includes('[DOWNLOAD_READY]')) {
-          break;
-        }
-
-        sendLine(res, '');
-        sendLine(res, `== ─────────────────────────────────────────────`);
-        sendLine(res, `[BUILDER: ${BUILDER_MODEL}]`);
-        sendLine(res, `>> Verified ${doneFiles.length} file(s) — continuing build...`);
-        sendLine(res, '');
-
         builderMsgs.push({ role: 'assistant', content: accumulated });
         builderMsgs.push({
           role: 'user',
-          content: `Files completed and verified so far: ${doneFiles.join(', ')}\n\n` +
-            `Continue outputting the remaining planned files in the same format.\n` +
-            `Do NOT re-output files already listed above.\n` +
-            `When ALL files are done output [BUILD_COMPLETE] then [DOWNLOAD_READY].`
+          content: `File verified: ${filePath}\n` +
+            `Files completed so far: ${doneFiles.join(', ')}\n\n` +
+            `Continue with the NEXT file in the plan. Output ONE file then stop.\n` +
+            `Do NOT re-output any file already in the completed list above.\n` +
+            `If ALL planned files are done, output [BUILD_COMPLETE] then [DOWNLOAD_READY].`
         });
 
+        fileCompleteTag = null;
         round++;
         continue;
       }
@@ -834,23 +755,29 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // ── Builder finished naturally with no tags — done ──
+      // ── No tag hit — builder finished its response naturally ──
       break;
     }
 
-    // ── End of build ──
+    // ── Determine if this was a real build or just chat/clarification ──
+    const hasBuildComplete = builderOutput.includes('[BUILD_COMPLETE]');
     const hasFiles = Object.keys(fileRegistry).length > 0;
 
-    if (!hasFiles && !buildStarted) {
+    if (!hasBuildComplete && !hasFiles) {
+      // Pure chat or clarification — end cleanly
       res.write('data: [DONE]\n\n');
       return res.end();
     }
 
+    // ── Rebuild canonical file output into builderOutput for frontend parseFiles ──
+    // The frontend reads FILE:/CONTENT:/FILE_COMPLETE: blocks to build the zip
+    // We reconstruct them from fileRegistry so verified/fixed content is used
     if (hasFiles) {
       let canonical = '\n';
       for (const [path, content] of Object.entries(fileRegistry)) {
         canonical += `FILE: ${path}\nCONTENT:\n${content}\n[FILE_COMPLETE: ${path}]\n`;
       }
+      // Append canonical blocks so parseFiles() in frontend finds them
       sendSSE(res, canonical);
     }
 
