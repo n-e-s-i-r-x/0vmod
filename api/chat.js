@@ -425,19 +425,39 @@ function extractFileContent(builderOutput, filePath) {
 // streamModel — streams model output to client AND returns full text
 // ─────────────────────────────────────────────
 async function streamModel(res, model, msgs, maxTok, temp) {
-  const resp = await callModel(model, msgs, true, maxTok, temp);
-  if (!resp.ok) return '';
+  let resp;
+  try {
+    resp = await callModel(model, msgs, true, maxTok, temp);
+  } catch (fetchErr) {
+    console.error('streamModel fetch error:', fetchErr);
+    return '';
+  }
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    console.error('streamModel non-ok:', resp.status, errText);
+    return '';
+  }
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '', out = '';
   const stripThink = makeThinkStripper();
+
+  // Keep-alive so connection doesn't drop during long verifier calls
+  let heartbeatStopped = false;
+  const heartbeat = setInterval(() => {
+    if (!heartbeatStopped) { try { res.write(': ping\n\n'); } catch(_) {} }
+  }, 2000);
+
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let readResult;
+      try { readResult = await reader.read(); } catch(e) { break; }
+      const { done, value } = readResult;
       if (done) break;
       buf += dec.decode(value, { stream: true });
       const lines = buf.split('\n'); buf = lines.pop() || '';
       for (const line of lines) {
+        if (line.startsWith(':')) continue;
         if (!line.startsWith('data: ')) continue;
         const d = line.slice(6).trim();
         if (d === '[DONE]') continue;
@@ -448,13 +468,15 @@ async function streamModel(res, model, msgs, maxTok, temp) {
             const clean = stripThink(delta);
             if (!clean) continue;
             out += clean;
-            res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
+            try { res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`); } catch(_) {}
           }
         } catch (_) {}
       }
     }
   } finally {
-    reader.cancel().catch(() => {});
+    heartbeatStopped = true;
+    clearInterval(heartbeat);
+    try { reader.cancel(); } catch(_) {}
   }
   return out;
 }
@@ -593,11 +615,16 @@ export default async function handler(req, res) {
   const { messages, isModMode, isBuild } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'Invalid messages' });
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.setHeader('X-Builder-Model', BUILDER_MODEL);
   res.setHeader('X-Verifier-Model', VERIFIER_MODEL);
+  // Flush headers immediately so browser opens the SSE stream
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+  // Initial ping so client knows stream is alive
+  res.write(': connected\n\n');
 
   const MAX_ROUNDS = 40;
   const MAX_MS = 115000;
@@ -642,51 +669,66 @@ export default async function handler(req, res) {
       let searchQuery = null, fileCompleteTag = null;
       const stripThink = makeThinkStripper();
 
-      const heartbeat = setInterval(() => { res.write(': ping\n\n'); }, 5000);
-      outer: while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split('\n'); buf = parts.pop() || '';
+      let heartbeatStopped = false;
+      const heartbeat = setInterval(() => {
+        if (!heartbeatStopped) { try { res.write(': ping\n\n'); } catch(_) {} }
+      }, 2000);
 
-        for (const line of parts) {
-          if (line.startsWith(':')) continue;
-          if (!line.startsWith('data: ')) continue;
-          const d = line.slice(6).trim();
-          if (d === '[DONE]') break outer;
+      let breakReason = null; // 'done' | 'search' | 'file_complete' | 'build_complete'
+
+      try {
+        outer: while (true) {
+          let readResult;
           try {
-            const p = JSON.parse(d);
-            const delta = getDelta(p);
-            if (delta) {
-              const clean = stripThink(delta);
-              if (!clean) continue;
-              accumulated += clean;
-              lineBuf += clean;
-              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
+            readResult = await reader.read();
+          } catch (readErr) {
+            // Socket closed / aborted
+            break;
+          }
+          const { done, value } = readResult;
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const parts = buf.split('\n'); buf = parts.pop() || '';
 
-              // Check completed lines for control tags
-              const nlIdx = lineBuf.lastIndexOf('\n');
-              if (nlIdx !== -1) {
-                const completedLines = lineBuf.slice(0, nlIdx);
-                lineBuf = lineBuf.slice(nlIdx + 1);
+          for (const line of parts) {
+            if (line.startsWith(':')) continue;
+            if (!line.startsWith('data: ')) continue;
+            const d = line.slice(6).trim();
+            if (d === '[DONE]') { breakReason = 'done'; break outer; }
+            try {
+              const p = JSON.parse(d);
+              const delta = getDelta(p);
+              if (delta) {
+                const clean = stripThink(delta);
+                if (!clean) continue;
+                accumulated += clean;
+                lineBuf += clean;
+                try { res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`); } catch(_) {}
 
-                for (const cl of completedLines.split('\n')) {
-                  const t = cl.trim();
-                  const sm = t.match(/^\[SEARCH:\s*([^\]]+)\]$/);
-                  if (sm) { searchQuery = sm[1].trim(); break outer; }
-                  const fcm = t.match(/^\[FILE_COMPLETE:\s*(.+?)\]$/);
-                  if (fcm) { fileCompleteTag = fcm[1].trim(); break outer; }
-                  // Do NOT break on [BUILD_COMPLETE] here — let the round finish naturally
-                  // so we can detect it after streaming ends below
+                // Check completed lines for control tags
+                const nlIdx = lineBuf.lastIndexOf('\n');
+                if (nlIdx !== -1) {
+                  const completedLines = lineBuf.slice(0, nlIdx);
+                  lineBuf = lineBuf.slice(nlIdx + 1);
+
+                  for (const cl of completedLines.split('\n')) {
+                    const t = cl.trim();
+                    const sm = t.match(/^\[SEARCH:\s*([^\]]+)\]$/);
+                    if (sm) { searchQuery = sm[1].trim(); breakReason = 'search'; break outer; }
+                    const fcm = t.match(/^\[FILE_COMPLETE:\s*(.+?)\]$/);
+                    if (fcm) { fileCompleteTag = fcm[1].trim(); breakReason = 'file_complete'; break outer; }
+                    if (t === '[BUILD_COMPLETE]' || t === '[DOWNLOAD_READY]') { breakReason = 'build_complete'; break outer; }
+                  }
                 }
               }
-            }
-          } catch (_) {}
+            } catch (_) {}
+          }
         }
+      } finally {
+        heartbeatStopped = true;
+        clearInterval(heartbeat);
+        try { reader.cancel(); } catch(_) {}
       }
-
-      clearInterval(heartbeat);
-      reader.cancel().catch(() => {});
       builderOutput += accumulated;
 
       // ── FILE COMPLETE: verify then continue ──
