@@ -518,34 +518,45 @@ async function streamResp(resp, bb, isT, signal) {
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      if (signal?.aborted) break;
+      let readResult;
+      try { readResult = await reader.read(); } catch(e) { break; }
+      const { done, value } = readResult;
       if (done || signal?.aborted) break;
       const raw = dec.decode(value, { stream: true });
       buf += raw;
       const lines = buf.split('\n'); buf = lines.pop() || '';
       for (const line of lines) {
-        if (line.startsWith(':')) continue;
+        if (line.startsWith(':')) continue; // heartbeat/comment lines
         if (!line.startsWith('data: ')) continue;
-        const d = line.slice(6).trim(); if (d === '[DONE]') continue;
+        const d = line.slice(6).trim();
+        if (d === '[DONE]') { break; }
         try {
           const p = JSON.parse(d);
           const delta = p.choices?.[0]?.delta?.content || '';
-          if (delta) { full += delta; isT ? renderTerm(ce, full) : renderMD(ce, full); scr(); }
+          if (delta) {
+            full += delta;
+            try { isT ? renderTerm(ce, full) : renderMD(ce, full); } catch(_) {}
+            scr();
+          }
         } catch (_) {}
       }
     }
-  } finally { cur?.remove(); }
+  } finally {
+    try { reader.cancel(); } catch(_) {}
+    cur?.remove();
+  }
+    // Always do a final render with whatever we have
+    try { isT ? renderTerm(ce, full, true) : renderMD(ce, full); } catch(_) {}
+  }
 
-  isT ? renderTerm(ce, full, true) : renderMD(ce, full);
   if (isT && !signal?.aborted) {
     parseFiles(full);
-    const regenMatch = full.match(/\[BUILDER:[^\]]*\][\s\S]*$/);
-    if (regenMatch) parseFiles(regenMatch[0]);
     // Only show download after BUILD_COMPLETE — not mid-build
     if (full.includes('[BUILD_COMPLETE]') || full.includes('[BUILD_VERIFIED]')) {
       setTimeout(() => {
         if (!signal?.aborted && Object.keys(S.files).length > 0) addDL(bb);
-      }, 100);
+      }, 300);
     }
   }
   if (!signal?.aborted) S.msg.push({ role: 'assistant', content: full });
