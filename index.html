@@ -548,11 +548,13 @@ async function streamResp(resp, bb, isT, signal) {
   } finally { cur?.remove(); }
 
   isT ? renderTerm(ce, full, true) : renderMD(ce, full);
-  if (isT) {
+  if (isT && !signal?.aborted) {
     parseFiles(full);
     const regenMatch = full.match(/\[BUILDER:[^\]]*\][\s\S]*$/);
     if (regenMatch) parseFiles(regenMatch[0]);
-    setTimeout(() => { if (Object.keys(S.files).length > 0) addDL(bb); }, 100);
+    setTimeout(() => {
+      if (!signal?.aborted && Object.keys(S.files).length > 0) addDL(bb);
+    }, 100);
   }
   if (!signal?.aborted) S.msg.push({ role: 'assistant', content: full });
   scr();
