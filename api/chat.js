@@ -578,7 +578,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
-  const { messages, isModMode } = req.body;
+  const { messages, isModMode, isBuild } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'Invalid messages' });
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -598,7 +598,7 @@ export default async function handler(req, res) {
     let anyFailed = false;
 
     while (round < MAX_ROUNDS && Date.now() - t0 < MAX_MS) {
-      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, isModMode ? 6000 : 4096, isModMode ? 0.15 : 0.3);
+      const resp = await callModel(BUILDER_MODEL, builderMsgs, true, isBuild ? 4096 : 512, isBuild ? 0.2 : 0.3);
 
       if (!resp.ok) {
         const errText = await resp.text();
