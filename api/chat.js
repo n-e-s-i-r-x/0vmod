@@ -409,15 +409,12 @@ function getDelta(p) {
 
 // ─────────────────────────────────────────────
 // extractFileContent — safely pull content between FILE/FILE_COMPLETE markers
-// Fixed: proper regex escaping so paths with slashes/dots work correctly
 // ─────────────────────────────────────────────
 function extractFileContent(builderOutput, filePath) {
-  // Escape every regex special char in the path
   const esc = filePath.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
   const rx = new RegExp('FILE:\\s*' + esc + '\\s*\\nCONTENT:\\n([\\s\\S]*?)\\[FILE_COMPLETE:\\s*' + esc + '\\]');
   const m = builderOutput.match(rx);
   if (!m) return null;
-  // Strip any stray [VERIFY:...] lines from inside the content block
   return m[1].replace(/^\s*\[VERIFY:[^\]]*\]\s*$/gm, '').trim();
 }
 
@@ -442,7 +439,6 @@ async function streamModel(res, model, msgs, maxTok, temp) {
   let buf = '', out = '';
   const stripThink = makeThinkStripper();
 
-  // Keep-alive so connection doesn't drop during long verifier calls
   let heartbeatStopped = false;
   const heartbeat = setInterval(() => {
     if (!heartbeatStopped) { try { res.write(': ping\n\n'); } catch(_) {} }
@@ -482,7 +478,45 @@ async function streamModel(res, model, msgs, maxTok, temp) {
 }
 
 // ─────────────────────────────────────────────
-// verifyFile — verify one file synchronously (no fire-and-forget)
+// silentModel — calls model without streaming to client, returns raw text
+// ─────────────────────────────────────────────
+async function silentModel(model, messages, maxTok, temp) {
+  const resp = await callModel(model, messages, true, maxTok, temp);
+  if (!resp.ok) return '';
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', out = '';
+  const stripThink = makeThinkStripper();
+  try {
+    while (true) {
+      let readResult;
+      try { readResult = await reader.read(); } catch(e) { break; }
+      const { done, value } = readResult;
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith(':') || !line.startsWith('data: ')) continue;
+        const d = line.slice(6).trim();
+        if (d === '[DONE]') continue;
+        try {
+          const p = JSON.parse(d);
+          const delta = getDelta(p);
+          if (delta) {
+            const clean = stripThink(delta);
+            if (clean) out += clean;
+          }
+        } catch (_) {}
+      }
+    }
+  } finally {
+    try { reader.cancel(); } catch(_) {}
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────
+// verifyFile — verify one file, with retries
 // ─────────────────────────────────────────────
 async function verifyFile(res, messages, filePath, initialContent, builderOutput) {
   const MAX_FILE_RETRIES = 3;
@@ -553,7 +587,6 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
     }
 
     if (!passed && !failed) {
-      // Verifier output cut off / malformed — treat as pass to keep pipeline moving
       sendLine(res, `?? ${filePath} — verifier inconclusive, continuing`);
       sendLine(res, '');
       return { verified: true, content: currentContent };
@@ -586,7 +619,8 @@ async function verifyFile(res, messages, filePath, initialContent, builderOutput
       }
     ];
 
-    const fixOut = await streamModel(res, BUILDER_MODEL, fixMsgs, 4096, 0.1);
+    // ── SILENT FIX: capture output without streaming to client ──
+    const fixOut = await silentModel(BUILDER_MODEL, fixMsgs, 4096, 0.1);
     const fixedContent = extractFileContent(fixOut, filePath);
     if (fixedContent) {
       currentContent = fixedContent;
@@ -621,21 +655,16 @@ export default async function handler(req, res) {
   res.setHeader('X-Accel-Buffering', 'no');
   res.setHeader('X-Builder-Model', BUILDER_MODEL);
   res.setHeader('X-Verifier-Model', VERIFIER_MODEL);
-  // Flush headers immediately so browser opens the SSE stream
   if (typeof res.flushHeaders === 'function') res.flushHeaders();
-  // Initial ping so client knows stream is alive
   res.write(': connected\n\n');
 
   const MAX_ROUNDS = 40;
   const MAX_MS = 115000;
   const t0 = Date.now();
 
-  // Keep a compact file registry — path -> content — instead of one giant builderOutput string
   const fileRegistry = {};
-  // Full output for context (never sent back wholesale — trimmed per round)
   let builderOutput = '';
 
-  // Initial messages for builder
   const builderMsgs = [{ role: 'system', content: BUILDER_PROMPT }, ...messages];
 
   try {
@@ -654,7 +683,6 @@ export default async function handler(req, res) {
       if (!resp.ok) {
         const errText = await resp.text().catch(() => '');
         console.error('Builder error:', resp.status, errText);
-        // SSE headers already sent — cannot switch to JSON. Stream the error instead.
         sendLine(res, resp.status === 429
           ? '!! Rate limited — please wait a moment and try again.'
           : `!! AI service error: ${resp.status}`
@@ -674,7 +702,7 @@ export default async function handler(req, res) {
         if (!heartbeatStopped) { try { res.write(': ping\n\n'); } catch(_) {} }
       }, 2000);
 
-      let breakReason = null; // 'done' | 'search' | 'file_complete' | 'build_complete'
+      let breakReason = null;
 
       try {
         outer: while (true) {
@@ -682,7 +710,6 @@ export default async function handler(req, res) {
           try {
             readResult = await reader.read();
           } catch (readErr) {
-            // Socket closed / aborted
             break;
           }
           const { done, value } = readResult;
@@ -705,7 +732,6 @@ export default async function handler(req, res) {
                 lineBuf += clean;
                 try { res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`); } catch(_) {}
 
-                // Check completed lines for control tags
                 const nlIdx = lineBuf.lastIndexOf('\n');
                 if (nlIdx !== -1) {
                   const completedLines = lineBuf.slice(0, nlIdx);
@@ -735,10 +761,7 @@ export default async function handler(req, res) {
       if (fileCompleteTag) {
         const filePath = fileCompleteTag;
 
-        // Extract content using fixed regex (searches accumulated for this round)
         let fileContent = extractFileContent(accumulated, filePath);
-
-        // Fallback: search full builderOutput in case content spans chunks
         if (!fileContent) {
           fileContent = extractFileContent(builderOutput, filePath);
         }
@@ -746,8 +769,6 @@ export default async function handler(req, res) {
         if (fileContent) {
           fileRegistry[filePath] = fileContent;
 
-          // Verify synchronously — we must wait before telling builder to continue
-          // so the verifier output appears in stream before next file starts
           const result = await verifyFile(res, messages, filePath, fileContent, builderOutput);
           if (!result.verified) anyFailed = true;
           if (result.content !== fileContent) {
@@ -758,8 +779,6 @@ export default async function handler(req, res) {
           sendLine(res, '');
         }
 
-        // Tell builder to continue with ONLY the file list as context (not full output)
-        // This prevents context from ballooning on every round
         const doneFiles = Object.keys(fileRegistry);
         builderMsgs.push({ role: 'assistant', content: accumulated });
         builderMsgs.push({
@@ -801,18 +820,13 @@ export default async function handler(req, res) {
 
       // ── No tag hit — check why the builder stopped ──
       if (accumulated.includes('[BUILD_COMPLETE]') || accumulated.includes('[DOWNLOAD_READY]')) {
-        // Builder signaled it's done
         break;
       }
 
       if (accumulated.includes('[NEED_INFO]') || accumulated.includes('[/NEED_INFO]')) {
-        // Builder is asking for clarification — done for now
         break;
       }
 
-      // Builder output a plan but no file yet — nudge it to start building.
-      // Only do this if: it's a build request, we're on round 0 (plan announcement),
-      // and the response actually looks like a file plan (mentions .json or .js paths).
       const hasAnyFile = Object.keys(fileRegistry).length > 0;
       const looksLikePlan = isBuild
         && round === 0
@@ -833,17 +847,14 @@ export default async function handler(req, res) {
       break;
     }
 
-    // ── Determine if this was a real build or just chat/clarification ──
     const hasBuildComplete = builderOutput.includes('[BUILD_COMPLETE]');
     const hasFiles = Object.keys(fileRegistry).length > 0;
 
     if (!hasBuildComplete && !hasFiles) {
-      // Pure chat or clarification — end cleanly
       res.write('data: [DONE]\n\n');
       return res.end();
     }
 
-    // ── Send file registry as silent metadata event for frontend zip building ──
     if (hasFiles) {
       res.write(`data: ${JSON.stringify({ type: 'file_registry', files: fileRegistry })}\n\n`);
     }
