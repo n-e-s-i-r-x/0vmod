@@ -364,8 +364,28 @@ async function callModel(model, messages, streamMode, maxTokens, temp) {
   });
 }
 
-function stripThink(text) {
-  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+function makeThinkStripper() {
+  let insideThink = false;
+  let buf = '';
+  return function strip(chunk) {
+    buf += chunk;
+    let out = '';
+    while (buf.length > 0) {
+      if (insideThink) {
+        const end = buf.indexOf('</think>');
+        if (end === -1) { buf = ''; return out; }
+        buf = buf.slice(end + 8);
+        insideThink = false;
+      } else {
+        const start = buf.indexOf('<think>');
+        if (start === -1) { out += buf; buf = ''; return out; }
+        out += buf.slice(0, start);
+        buf = buf.slice(start + 7);
+        insideThink = true;
+      }
+    }
+    return out;
+  };
 }
 
 function sendSSE(res, content) {
@@ -421,6 +441,7 @@ export default async function handler(req, res) {
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '', accumulated = '', searchQuery = null;
+      const stripThink = makeThinkStripper();
 
       outer: while (true) {
         const { done, value } = await reader.read();
@@ -508,6 +529,7 @@ export default async function handler(req, res) {
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '', out = '';
+      const stripThink = makeThinkStripper();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -524,7 +546,12 @@ export default async function handler(req, res) {
             const delta = p.choices?.[0]?.delta?.content
               ?? p.choices?.[0]?.message?.content
               ?? '';
-            if (delta) { out += delta; res.write(line + '\n\n'); }
+            if (delta) {
+              const clean = stripThink(delta);
+              if (!clean) continue;
+              out += clean;
+              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: clean } }] })}\n\n`);
+            }
           } catch (_) {}
         }
       }
