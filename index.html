@@ -223,17 +223,9 @@ select:focus{border-color:var(--b)}
       <div class="sgt">DUAL-MODEL PIPELINE</div>
       <div class="mbrow">
         <div class="mbl">BUILDER — Code Generator</div>
-        <div class="mbdg builder">
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><circle cx="4" cy="4" r="3" fill="#00e676"/></svg>
-          0v/000-120b
-        </div>
       </div>
       <div class="mbrow">
         <div class="mbl">VERIFIER — Validator &amp; Approver</div>
-        <div class="mbdg verifier">
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><circle cx="4" cy="4" r="3" fill="#b388ff"/></svg>
-          0v/000-110b
-        </div>
       </div>
       <div class="si">
         <div class="sl" style="font-size:9px;color:var(--t3);line-height:1.6">
@@ -281,10 +273,7 @@ select:focus{border-color:var(--b)}
     </div>
     <div class="et">BEDROCK ADDON BUILDER</div>
     <div class="es">AI asks questions, then builds verified working addons ready to install.</div>
-    <div class="edual">
-      <span class="etag b">BUILDER: 0v-000-120b</span>
-      <span class="etag v">VERIFIER: 0v-000-110b</span>
-    </div>
+    <div class="edual"></div>
   </div>
 </main>
 
@@ -575,13 +564,11 @@ function renderTerm(el, text, fin = false) {
 
     // ── BUILDER / VERIFIER labels ──────────
     if (/^\[BUILDER:/.test(t)) {
-      const name = t.replace(/^\[BUILDER:\s*/, '').replace(/\]$/, '').trim();
-      html += `<span class="tl cbuilder">BUILDER: ${esc(name || 'deepseek-v4-pro')}</span>\n`;
+      html += `<span class="tl cbuilder">BUILDER: 0v-000-120b</span>\n`;
       continue;
     }
     if (/^\[VERIFIER:/.test(t)) {
-      const name = t.replace(/^\[VERIFIER:\s*/, '').replace(/\]$/, '').trim();
-      html += `<span class="tl cverifier">VERIFIER: ${esc(name || 'deepseek-v4-flash')}</span>\n`;
+      html += `<span class="tl cverifier">VERIFIER: 0v-000-110b</span>\n`;
       continue;
     }
     if (t.includes('[VERIFIER_REPORT]'))   { html += tl('-- VERIFIER_REPORT starting', 'cverifier'); continue; }
@@ -798,16 +785,7 @@ function addUsr(t) {
 
 function addAsst(isT, builderModel, verifierModel) {
   const d = document.createElement('div'); d.className = 'msg a' + (isT ? ' tm' : '');
-  let tags = '';
-  if (builderModel) {
-    const bLabel = builderModel.includes('pro') ? 'BUILDER' : builderModel.split('/').pop().split(':')[0];
-    tags += `<span class="mtag builder">${esc(bLabel)}</span>`;
-  }
-  if (verifierModel && isT) {
-    const vLabel = verifierModel.includes('flash') ? 'VERIFIER' : verifierModel.split('/').pop().split(':')[0];
-    tags += `<span class="mtag verifier">${esc(vLabel)}</span>`;
-  }
-  d.innerHTML = `<div class="mm">${fT()} ${tags}</div>`;
+  d.innerHTML = `<div class="mm">${fT()}</div>`;
   const bb = document.createElement('div'); bb.className = 'bb'; d.appendChild(bb);
   chat.appendChild(d); scr();
   return { msg: d, bubble: bb };
